@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from "react";
-import { Search, MapPin, MessageCircle, Plus, X, ArrowUpRight, Wheat, ShieldCheck, Flag, AlertTriangle, Wrench, Tag, TrendingUp } from "lucide-react";
+import { Search, MapPin, MessageCircle, Plus, X, ArrowUpRight, Wheat, ShieldCheck, Flag, AlertTriangle, Wrench, Tag, TrendingUp, Share2 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
 const TOKENS = `
@@ -110,6 +110,7 @@ export default function StallDirectory() {
   const [showAddPrice, setShowAddPrice] = useState(false);
   const [priceIndex, setPriceIndex] = useState(0);
   const [priceSubmitted, setPriceSubmitted] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
 
   useEffect(() => {
     if (!supabase) return; // no env vars set yet — running on seed data only
@@ -295,6 +296,29 @@ export default function StallDirectory() {
     f.reset();
   }
 
+  async function shareApp() {
+    const shareData = {
+      title: "Agoro",
+      text: "Agoro — find bakers, caterers, suppliers, and used baking tools, all in one place. Check it out:",
+      url: typeof window !== "undefined" ? window.location.origin : "",
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+        return;
+      }
+    } catch (err) {
+      return; // person cancelled the native share sheet, nothing to do
+    }
+    try {
+      await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+      setShareCopied(true);
+      setTimeout(() => setShareCopied(false), 3000);
+    } catch (err) {
+      // clipboard unavailable — nothing more we can do silently
+    }
+  }
+
   return (
     <div className="stall-root" style={{ minHeight: "100%" }}>
       <style>{TOKENS}</style>
@@ -304,8 +328,21 @@ export default function StallDirectory() {
       <div className="px-6 pt-6 pb-2">
         <div className="flex items-center justify-between max-w-4xl mx-auto flex-wrap gap-2">
           <img src="/agoro-logo.png" alt="Agoro" style={{ height: 168, width: "auto" }} />
-          <span className="mono text-xs" style={{ color: "var(--cream-dim)" }}>400 members · 120 active</span>
+          <div className="flex items-center gap-3">
+            <span className="mono text-xs" style={{ color: "var(--cream-dim)" }}>400 members · 120 active</span>
+            <button
+              onClick={shareApp}
+              className="pill rounded-full px-3 py-1.5 text-xs mono flex items-center gap-1.5 shrink-0"
+            >
+              <Share2 size={13} /> Share Agoro
+            </button>
+          </div>
         </div>
+        {shareCopied && (
+          <p className="max-w-4xl mx-auto mt-1 text-xs mono" style={{ color: "var(--leaf-dark)" }}>
+            Link copied — paste it anywhere to share.
+          </p>
+        )}
         <p className="max-w-4xl mx-auto mt-1 text-sm" style={{ color: "var(--cream-dim)" }}>
           Find bakers, caterers and suppliers near you. Ask the market anything.
         </p>
