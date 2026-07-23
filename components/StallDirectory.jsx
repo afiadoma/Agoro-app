@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Search, MapPin, MessageCircle, Plus, X, ArrowUpRight, Wheat, ShieldCheck, Flag, AlertTriangle, Wrench, Tag, TrendingUp, Share2 } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
@@ -38,12 +38,12 @@ const TOKENS = `
 `;
 
 const SEED_LISTINGS = [
-  { id: 1, name: "Ama's Buttercream Bar", type: "baker", area: "East Legon, Accra", price: "GH₵150–800", overflow: true, verified: true, listedOn: "2026-06-02", photos: ["https://picsum.photos/seed/agoro1/400/300"], blurb: "Custom celebration cakes, ribbon icing, fondant work.", status: "approved" },
-  { id: 2, name: "Osu Chop House Catering", type: "caterer", area: "Osu, Accra", price: "GH₵40/head+", overflow: false, verified: true, listedOn: "2026-06-04", photos: ["https://picsum.photos/seed/agoro2/400/300"], blurb: "Full-service event catering — jollof, grilled tilapia, chin chin platters.", status: "approved" },
-  { id: 3, name: "Kente Cake Box Co.", type: "supplier", area: "Dansoman, Accra", price: "GH₵5–25/box", overflow: false, verified: true, listedOn: "2026-06-10", photos: ["https://picsum.photos/seed/agoro3/400/300"], blurb: "Cake boxes, ribbon, food coloring gel, cake boards.", status: "approved" },
-  { id: 4, name: "Nana's Naked Cakes", type: "baker", area: "Tema", price: "GH₵200–600", overflow: true, verified: false, listedOn: "2026-07-01", photos: ["https://picsum.photos/seed/agoro4/400/300"], blurb: "Semi-naked cakes, cupcakes, small-batch orders welcome.", status: "approved" },
-  { id: 5, name: "Golden Grain Flour Supply", type: "supplier", area: "Kumasi", price: "Wholesale", overflow: false, verified: true, listedOn: "2026-06-20", photos: [], blurb: "Bulk flour, sugar, cocoa — deliveries across Ashanti region.", status: "approved" },
-  { id: 6, name: "Efua's Small Chops", type: "caterer", area: "Dansoman, Accra", price: "GH₵25/head+", overflow: true, verified: false, listedOn: "2026-07-08", photos: ["https://picsum.photos/seed/agoro6/400/300"], blurb: "Spring rolls, samosas, meat pies — takes overflow orders from other vendors.", status: "approved" },
+  { id: 1, name: "Ama's Buttercream Bar", type: "baker", area: "East Legon, Accra", price: "GH₵150–800", overflow: true, verified: true, listedOn: "2026-06-02", photos: ["https://picsum.photos/seed/agoro1/400/300"], whatsapp: "233241111111", blurb: "Custom celebration cakes, ribbon icing, fondant work.", status: "approved" },
+  { id: 2, name: "Osu Chop House Catering", type: "caterer", area: "Osu, Accra", price: "GH₵40/head+", overflow: false, verified: true, listedOn: "2026-06-04", photos: ["https://picsum.photos/seed/agoro2/400/300"], whatsapp: "233242222222", blurb: "Full-service event catering — jollof, grilled tilapia, chin chin platters.", status: "approved" },
+  { id: 3, name: "Kente Cake Box Co.", type: "supplier", area: "Dansoman, Accra", price: "GH₵5–25/box", overflow: false, verified: true, listedOn: "2026-06-10", photos: ["https://picsum.photos/seed/agoro3/400/300"], whatsapp: "233243333333", blurb: "Cake boxes, ribbon, food coloring gel, cake boards.", status: "approved" },
+  { id: 4, name: "Nana's Naked Cakes", type: "baker", area: "Tema", price: "GH₵200–600", overflow: true, verified: false, listedOn: "2026-07-01", photos: ["https://picsum.photos/seed/agoro4/400/300"], whatsapp: "233244444444", blurb: "Semi-naked cakes, cupcakes, small-batch orders welcome.", status: "approved" },
+  { id: 5, name: "Golden Grain Flour Supply", type: "supplier", area: "Kumasi", price: "Wholesale", overflow: false, verified: true, listedOn: "2026-06-20", photos: [], whatsapp: "233245555555", blurb: "Bulk flour, sugar, cocoa — deliveries across Ashanti region.", status: "approved" },
+  { id: 6, name: "Efua's Small Chops", type: "caterer", area: "Dansoman, Accra", price: "GH₵25/head+", overflow: true, verified: false, listedOn: "2026-07-08", photos: ["https://picsum.photos/seed/agoro6/400/300"], whatsapp: "233246666666", blurb: "Spring rolls, samosas, meat pies — takes overflow orders from other vendors.", status: "approved" },
 ];
 
 const SEED_THREADS = [
@@ -65,10 +65,10 @@ const CAT_LABEL = { baker: "Bakers", caterer: "Caterers", supplier: "Suppliers" 
 const FORUM_CATS = ["All", "Ingredient Sourcing", "Pricing Advice", "Equipment", "General"];
 
 const SEED_TOOLS = [
-  { id: 1, title: "6-Tier Cake Stand (adjustable height)", description: "Barely used, adjustable turntable stand, great for wedding displays.", price: "GH₵350", location: "East Legon, Accra", category: "Decorating Tools", seller: "Ama", postedOn: "2026-07-14", photos: ["https://picsum.photos/seed/tool1/400/300"], status: "approved" },
-  { id: 2, title: "KitchenAid Stand Mixer, 5L", description: "Used for 2 years, still strong motor, comes with whisk and dough hook.", price: "GH₵2,200", location: "Tema", category: "Mixers", postedOn: "2026-07-10", seller: "Nana", photos: ["https://picsum.photos/seed/tool2/400/300"], status: "approved" },
-  { id: 3, title: "Set of 12 Silicone Cake Pans", description: "Assorted round and square sizes, non-stick, minor wear.", price: "GH₵180", location: "Dansoman, Accra", category: "Pans & Molds", postedOn: "2026-07-08", seller: "Efua", photos: [], status: "approved" },
-  { id: 4, title: "Gas Deck Oven (double)", description: "Selling as I'm upgrading — reliable, even bake, buyer arranges pickup.", price: "GH₵4,500", location: "Kumasi", category: "Ovens & Ranges", postedOn: "2026-07-01", seller: "Golden Grain Bakery", photos: ["https://picsum.photos/seed/tool4/400/300"], status: "approved" },
+  { id: 1, title: "6-Tier Cake Stand (adjustable height)", description: "Barely used, adjustable turntable stand, great for wedding displays.", price: "GH₵350", location: "East Legon, Accra", category: "Decorating Tools", seller: "Ama", postedOn: "2026-07-14", whatsapp: "233241111111", photos: ["https://picsum.photos/seed/tool1/400/300"], status: "approved" },
+  { id: 2, title: "KitchenAid Stand Mixer, 5L", description: "Used for 2 years, still strong motor, comes with whisk and dough hook.", price: "GH₵2,200", location: "Tema", category: "Mixers", postedOn: "2026-07-10", seller: "Nana", whatsapp: "233244444444", photos: ["https://picsum.photos/seed/tool2/400/300"], status: "approved" },
+  { id: 3, title: "Set of 12 Silicone Cake Pans", description: "Assorted round and square sizes, non-stick, minor wear.", price: "GH₵180", location: "Dansoman, Accra", category: "Pans & Molds", postedOn: "2026-07-08", seller: "Efua", whatsapp: "233246666666", photos: [], status: "approved" },
+  { id: 4, title: "Gas Deck Oven (double)", description: "Selling as I'm upgrading — reliable, even bake, buyer arranges pickup.", price: "GH₵4,500", location: "Kumasi", category: "Ovens & Ranges", postedOn: "2026-07-01", seller: "Golden Grain Bakery", whatsapp: "233245555555", photos: ["https://picsum.photos/seed/tool4/400/300"], status: "approved" },
 ];
 
 const TOOL_CATS = ["All", "Mixers", "Ovens & Ranges", "Pans & Molds", "Decorating Tools", "Other"];
@@ -84,6 +84,42 @@ function formatDate(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+function waLink(number, itemName) {
+  if (!number) return null;
+  const message = `Hi! I saw your listing for "${itemName}" on Agoro and I'm interested.`;
+  return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+}
+
+function compressImage(file, maxWidth = 1400, quality = 0.75) {
+  return new Promise((resolve) => {
+    if (!file.type.startsWith("image/")) return resolve(file);
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) return resolve(file); // compression failed — fall back to the original file
+            resolve(new File([blob], file.name.replace(/\.\w+$/, ".jpg"), { type: "image/jpeg" }));
+          },
+          "image/jpeg",
+          quality
+        );
+      };
+      img.onerror = () => resolve(file); // couldn't decode — fall back to the original file
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve(file);
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function StallDirectory() {
   const [tab, setTab] = useState("directory");
   const [filter, setFilter] = useState("All");
@@ -93,6 +129,8 @@ export default function StallDirectory() {
   const [reported, setReported] = useState({});
   const [loading, setLoading] = useState(!!supabase);
   const [photoPreview, setPhotoPreview] = useState([]);
+  const [submittingListing, setSubmittingListing] = useState(false);
+  const [listingPhotoNote, setListingPhotoNote] = useState("");
 
   const [forumFilter, setForumFilter] = useState("All");
   const [threads, setThreads] = useState(supabase ? [] : SEED_THREADS);
@@ -105,12 +143,46 @@ export default function StallDirectory() {
   const [showAddTool, setShowAddTool] = useState(false);
   const [reportedTools, setReportedTools] = useState({});
   const [toolPhotoPreview, setToolPhotoPreview] = useState([]);
+  const [submittingTool, setSubmittingTool] = useState(false);
+  const [toolPhotoNote, setToolPhotoNote] = useState("");
 
   const [prices, setPrices] = useState(supabase ? [] : SEED_PRICES);
   const [showAddPrice, setShowAddPrice] = useState(false);
   const [priceIndex, setPriceIndex] = useState(0);
   const [priceSubmitted, setPriceSubmitted] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
+  const [adBanner, setAdBanner] = useState(null); // { image, link, label } — set from Supabase once a real advertiser signs on
+
+  // Manage / edit my listing flow
+  const [manageOpen, setManageOpen] = useState(false);
+  const [manageStep, setManageStep] = useState("lookup"); // lookup | results | edit
+  const [manageWhatsapp, setManageWhatsapp] = useState("");
+  const [manageResults, setManageResults] = useState([]); // [{kind:'listing'|'tool', ...row}]
+  const [manageLoading, setManageLoading] = useState(false);
+  const [manageError, setManageError] = useState("");
+  const [editingItem, setEditingItem] = useState(null); // {kind, ...row}
+  const [manageSaved, setManageSaved] = useState(false);
+
+  // Photo lightbox — view all photos on a listing/tool, not just the first one
+  const [lightbox, setLightbox] = useState(null); // { photos: [], index: 0, title: '' }
+
+  function openLightbox(photos, index, title) {
+    setLightbox({ photos, index, title });
+  }
+  function closeLightbox() {
+    setLightbox(null);
+  }
+  function lightboxNext() {
+    setLightbox((lb) => (lb ? { ...lb, index: (lb.index + 1) % lb.photos.length } : lb));
+  }
+  function lightboxPrev() {
+    setLightbox((lb) => (lb ? { ...lb, index: (lb.index - 1 + lb.photos.length) % lb.photos.length } : lb));
+  }
+
+  // Synchronous guards against double-tap duplicate submissions — state-based
+  // disabling isn't fast enough to catch a rapid second tap before re-render.
+  const listingSubmitLock = useRef(false);
+  const toolSubmitLock = useRef(false);
 
   useEffect(() => {
     if (!supabase) return; // no env vars set yet — running on seed data only
@@ -123,7 +195,7 @@ export default function StallDirectory() {
 
       setListings(
         (listingRows || []).map((l) => ({
-          id: l.id, name: l.name, type: l.type, area: l.area, price: l.price,
+          id: l.id, name: l.name, type: l.type, area: l.area, price: l.price, whatsapp: l.whatsapp,
           overflow: l.overflow, verified: l.verified, listedOn: l.created_at?.slice(0, 10), blurb: l.blurb,
           photos: l.photos || [], status: l.status,
         }))
@@ -136,7 +208,7 @@ export default function StallDirectory() {
       );
       setTools(
         (toolRows || []).map((t) => ({
-          id: t.id, title: t.title, description: t.description, price: t.price, location: t.location,
+          id: t.id, title: t.title, description: t.description, price: t.price, location: t.location, whatsapp: t.whatsapp,
           category: t.category, seller: t.seller, postedOn: t.created_at?.slice(0, 10), photos: t.photos || [], status: t.status,
         }))
       );
@@ -150,70 +222,110 @@ export default function StallDirectory() {
     })();
   }, []);
 
+  const approvedPrices = prices.filter((p) => p.status === "approved");
+
   useEffect(() => {
-    if (prices.length < 2) return;
+    if (approvedPrices.length < 2) return;
     const timer = setInterval(() => {
-      setPriceIndex((i) => (i + 1) % prices.length);
+      setPriceIndex((i) => (i + 1) % approvedPrices.length);
     }, 4000);
     return () => clearInterval(timer);
-  }, [prices.length]);
+  }, [approvedPrices.length]);
 
   const filtered = listings.filter(
     (l) =>
+      l.status === "approved" &&
       (filter === "All" || l.type === filter) &&
       (l.name.toLowerCase().includes(query.toLowerCase()) ||
         l.area.toLowerCase().includes(query.toLowerCase()) ||
         l.blurb.toLowerCase().includes(query.toLowerCase()))
   );
 
-  const filteredThreads = threads.filter((t) => forumFilter === "All" || t.category === forumFilter);
+  const filteredThreads = threads.filter((t) => t.status === "approved" && (forumFilter === "All" || t.category === forumFilter));
 
   const filteredTools = tools.filter(
     (t) =>
+      t.status === "approved" &&
       (toolFilter === "All" || t.category === toolFilter) &&
       (t.title.toLowerCase().includes(toolQuery.toLowerCase()) ||
         t.location.toLowerCase().includes(toolQuery.toLowerCase()) ||
         t.description.toLowerCase().includes(toolQuery.toLowerCase()))
   );
 
+  const featuredListing =
+    filtered.find((l) => l.verified && l.photos && l.photos.length > 0) ||
+    filtered.find((l) => l.photos && l.photos.length > 0) ||
+    null;
+
   async function addListing(e) {
     e.preventDefault();
+    if (listingSubmitLock.current) return; // already submitting — ignore a fast double-tap/double-click
     const f = e.target;
     const files = Array.from(f.photos.files).slice(0, 4);
     let photos = [];
+    let failedCount = 0;
 
-    if (supabase && files.length) {
-      const uploads = await Promise.all(
-        files.map(async (file) => {
-          const path = `${Date.now()}-${file.name}`;
-          const { error } = await supabase.storage.from("listing-photos").upload(path, file);
-          if (error) return null;
-          return supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl;
-        })
-      );
-      photos = uploads.filter(Boolean);
-    } else if (files.length) {
-      photos = files.map((file) => URL.createObjectURL(file)); // preview-only, doesn't persist without Supabase
+    if (files.length === 0) {
+      setListingPhotoNote("Please add at least one photo before submitting.");
+      return;
     }
 
-    const draft = {
-      name: f.name.value,
-      type: f.type.value,
-      area: f.area.value,
-      price: f.price.value,
-      overflow: f.overflow.checked,
-      verified: true,
-      blurb: f.blurb.value,
-      photos,
-      status: "pending",
-    };
-    if (supabase) {
-      await supabase.from("listings").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
+    listingSubmitLock.current = true;
+    setSubmittingListing(true);
+    setListingPhotoNote("");
+
+    try {
+      if (supabase && files.length) {
+        const uploads = await Promise.all(
+          files.map(async (file) => {
+            const compressed = await compressImage(file);
+            const path = `${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+            let { error } = await supabase.storage.from("listing-photos").upload(path, compressed);
+            if (error) {
+              // one retry — mobile connections drop mid-upload sometimes
+              ({ error } = await supabase.storage.from("listing-photos").upload(path, compressed));
+            }
+            if (error) {
+              failedCount += 1;
+              return null;
+            }
+            return supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl;
+          })
+        );
+        photos = uploads.filter(Boolean);
+      } else if (files.length) {
+        photos = files.map((file) => URL.createObjectURL(file)); // preview-only, doesn't persist without Supabase
+      }
+
+      const draft = {
+        name: f.name.value,
+        type: f.type.value,
+        area: f.area.value,
+        price: f.price.value,
+        whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
+        overflow: f.overflow.checked,
+        verified: true,
+        blurb: f.blurb.value,
+        photos,
+        status: "pending",
+      };
+      if (supabase) {
+        await supabase.from("listings").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
+      }
+      setListings([{ ...draft, id: Date.now(), listedOn: new Date().toISOString().slice(0, 10) }, ...listings]);
+      setShowAdd(false);
+      setPhotoPreview([]);
+      f.reset();
+      if (failedCount > 0) {
+        setListingPhotoNote(`Your listing posted, but ${failedCount} photo${failedCount > 1 ? "s" : ""} didn't upload — you can add ${failedCount > 1 ? "them" : "it"} by posting again with just that photo, or check your connection and try later.`);
+        setTimeout(() => setListingPhotoNote(""), 8000);
+      }
+    } catch (err) {
+      setListingPhotoNote("Something went wrong submitting your listing — check your connection and try again.");
+    } finally {
+      setSubmittingListing(false);
+      listingSubmitLock.current = false;
     }
-    setListings([{ ...draft, id: Date.now(), listedOn: new Date().toISOString().slice(0, 10) }, ...listings]);
-    setShowAdd(false);
-    setPhotoPreview([]);
-    f.reset();
   }
 
   async function addThread(e) {
@@ -235,41 +347,71 @@ export default function StallDirectory() {
 
   async function addTool(e) {
     e.preventDefault();
+    if (toolSubmitLock.current) return; // already submitting — ignore a fast double-tap/double-click
     const f = e.target;
     const files = Array.from(f.photos.files).slice(0, 4);
     let photos = [];
+    let failedCount = 0;
 
-    if (supabase && files.length) {
-      const uploads = await Promise.all(
-        files.map(async (file) => {
-          const path = `tools/${Date.now()}-${file.name}`;
-          const { error } = await supabase.storage.from("listing-photos").upload(path, file);
-          if (error) return null;
-          return supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl;
-        })
-      );
-      photos = uploads.filter(Boolean);
-    } else if (files.length) {
-      photos = files.map((file) => URL.createObjectURL(file)); // preview-only, doesn't persist without Supabase
+    if (files.length === 0) {
+      setToolPhotoNote("Please add at least one photo before submitting.");
+      return;
     }
 
-    const draft = {
-      title: f.title.value,
-      description: f.description.value,
-      price: f.price.value,
-      location: f.location.value,
-      category: f.category.value,
-      seller: f.seller.value,
-      photos,
-      status: "pending",
-    };
-    if (supabase) {
-      await supabase.from("tools").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
+    toolSubmitLock.current = true;
+    setSubmittingTool(true);
+    setToolPhotoNote("");
+
+    try {
+      if (supabase && files.length) {
+        const uploads = await Promise.all(
+          files.map(async (file) => {
+            const compressed = await compressImage(file);
+            const path = `tools/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+            let { error } = await supabase.storage.from("listing-photos").upload(path, compressed);
+            if (error) {
+              ({ error } = await supabase.storage.from("listing-photos").upload(path, compressed));
+            }
+            if (error) {
+              failedCount += 1;
+              return null;
+            }
+            return supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl;
+          })
+        );
+        photos = uploads.filter(Boolean);
+      } else if (files.length) {
+        photos = files.map((file) => URL.createObjectURL(file)); // preview-only, doesn't persist without Supabase
+      }
+
+      const draft = {
+        title: f.title.value,
+        description: f.description.value,
+        price: f.price.value,
+        location: f.location.value,
+        category: f.category.value,
+        seller: f.seller.value,
+        whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
+        photos,
+        status: "pending",
+      };
+      if (supabase) {
+        await supabase.from("tools").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
+      }
+      setTools([{ ...draft, id: Date.now(), postedOn: new Date().toISOString().slice(0, 10) }, ...tools]);
+      setShowAddTool(false);
+      setToolPhotoPreview([]);
+      f.reset();
+      if (failedCount > 0) {
+        setToolPhotoNote(`Your listing posted, but ${failedCount} photo${failedCount > 1 ? "s" : ""} didn't upload — you can add ${failedCount > 1 ? "them" : "it"} by posting again with just that photo, or check your connection and try later.`);
+        setTimeout(() => setToolPhotoNote(""), 8000);
+      }
+    } catch (err) {
+      setToolPhotoNote("Something went wrong submitting your listing — check your connection and try again.");
+    } finally {
+      setSubmittingTool(false);
+      toolSubmitLock.current = false;
     }
-    setTools([{ ...draft, id: Date.now(), postedOn: new Date().toISOString().slice(0, 10) }, ...tools]);
-    setShowAddTool(false);
-    setToolPhotoPreview([]);
-    f.reset();
   }
 
   async function reportTool(id) {
@@ -319,6 +461,95 @@ export default function StallDirectory() {
     }
   }
 
+  function openManage() {
+    setManageOpen(true);
+    setManageStep("lookup");
+    setManageWhatsapp("");
+    setManageResults([]);
+    setManageError("");
+    setEditingItem(null);
+    setManageSaved(false);
+  }
+
+  function closeManage() {
+    setManageOpen(false);
+  }
+
+  async function lookupMyListings(e) {
+    e.preventDefault();
+    setManageError("");
+    const digits = manageWhatsapp.replace(/[^0-9]/g, "");
+    if (!digits) {
+      setManageError("Enter the WhatsApp number you used when posting.");
+      return;
+    }
+    setManageLoading(true);
+    if (supabase) {
+      const [{ data: myListings }, { data: myTools }] = await Promise.all([
+        supabase.from("listings").select("*").eq("whatsapp", digits).order("created_at", { ascending: false }),
+        supabase.from("tools").select("*").eq("whatsapp", digits).order("created_at", { ascending: false }),
+      ]);
+      const combined = [
+        ...(myListings || []).map((l) => ({ kind: "listing", ...l })),
+        ...(myTools || []).map((t) => ({ kind: "tool", ...t })),
+      ];
+      setManageResults(combined);
+    } else {
+      // demo mode without Supabase — search whatever's in local state
+      const combined = [
+        ...listings.filter((l) => l.whatsapp === digits).map((l) => ({ kind: "listing", ...l })),
+        ...tools.filter((t) => t.whatsapp === digits).map((t) => ({ kind: "tool", ...t })),
+      ];
+      setManageResults(combined);
+    }
+    setManageLoading(false);
+    setManageStep("results");
+  }
+
+  function startEditItem(item) {
+    setEditingItem({ ...item });
+    setManageStep("edit");
+  }
+
+  async function saveEditedItem(e) {
+    e.preventDefault();
+    if (!editingItem) return;
+    const f = e.target;
+    setManageLoading(true);
+
+    if (editingItem.kind === "listing") {
+      const updates = {
+        name: f.name.value,
+        type: f.type.value,
+        area: f.area.value,
+        price: f.price.value,
+        blurb: f.blurb.value,
+      };
+      if (supabase) {
+        await supabase.from("listings").update(updates).eq("id", editingItem.id);
+      }
+      setListings((prev) => prev.map((l) => (l.id === editingItem.id ? { ...l, ...updates } : l)));
+    } else {
+      const updates = {
+        title: f.title.value,
+        description: f.description.value,
+        price: f.price.value,
+        location: f.location.value,
+        category: f.category.value,
+      };
+      if (supabase) {
+        await supabase.from("tools").update(updates).eq("id", editingItem.id);
+      }
+      setTools((prev) => prev.map((t) => (t.id === editingItem.id ? { ...t, ...updates } : t)));
+    }
+
+    setManageLoading(false);
+    setManageSaved(true);
+    setTimeout(() => {
+      setManageOpen(false);
+    }, 1500);
+  }
+
   return (
     <div className="stall-root" style={{ minHeight: "100%" }}>
       <style>{TOKENS}</style>
@@ -330,6 +561,12 @@ export default function StallDirectory() {
           <img src="/agoro-logo.png" alt="Agoro" style={{ height: 168, width: "auto" }} />
           <div className="flex items-center gap-3">
             <span className="mono text-xs" style={{ color: "var(--cream-dim)" }}>400 members · 120 active</span>
+            <button
+              onClick={openManage}
+              className="pill rounded-full px-3 py-1.5 text-xs mono flex items-center gap-1.5 shrink-0"
+            >
+              <Tag size={13} /> Manage my listing
+            </button>
             <button
               onClick={shareApp}
               className="pill rounded-full px-3 py-1.5 text-xs mono flex items-center gap-1.5 shrink-0"
@@ -344,22 +581,48 @@ export default function StallDirectory() {
           </p>
         )}
         <p className="max-w-4xl mx-auto mt-1 text-sm" style={{ color: "var(--cream-dim)" }}>
-          Find bakers, caterers and suppliers near you. Ask the market anything.
+          Hi 👋 — find bakers, caterers and suppliers near you, or ask the market anything.
         </p>
       </div>
 
       <div className="zigzag" />
 
+      {/* Advertising banner */}
+      <div className="max-w-4xl mx-auto px-6 pt-3">
+        {adBanner && adBanner.image ? (
+          <a
+            href={adBanner.link || "#"}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block rounded-lg overflow-hidden"
+            style={{ border: "1px solid var(--line)" }}
+          >
+            <img src={adBanner.image} alt={adBanner.label || "Sponsored"} className="w-full h-20 sm:h-24 object-cover" />
+          </a>
+        ) : (
+          <div
+            className="rounded-lg flex items-center justify-center h-16 sm:h-20"
+            style={{ background: "var(--ground-raised)", border: "1px dashed var(--line)" }}
+          >
+            <span className="mono text-xs" style={{ color: "var(--cream-dim)" }}>
+              Advertising space available — reach 400+ bakers, caterers & suppliers
+            </span>
+          </div>
+        )}
+      </div>
+
       {/* Trending price ticker */}
-      <div className="max-w-4xl mx-auto px-6 py-2 flex items-center gap-3 flex-wrap" style={{ borderBottom: "1px solid var(--line)" }}>
-        <div className="flex items-center gap-2 flex-1 min-w-0 overflow-hidden">
-          <TrendingUp size={14} style={{ color: "var(--leaf-dark)", flexShrink: 0 }} />
-          {prices.length > 0 ? (
-            <span className="mono text-xs truncate" style={{ color: "var(--cream-dim)" }}>
-              Trending price: <span style={{ color: "var(--cream)", fontWeight: 600 }}>{prices[priceIndex % prices.length].item}</span>
+      <div className="max-w-4xl mx-auto px-6 py-2 flex items-start gap-3 flex-wrap" style={{ borderBottom: "1px solid var(--line)" }}>
+        <div className="flex items-start gap-2 flex-1 min-w-0">
+          <TrendingUp size={14} style={{ color: "var(--leaf-dark)", flexShrink: 0, marginTop: 2 }} />
+          {approvedPrices.length > 0 ? (
+            <span className="mono text-xs" style={{ color: "var(--cream-dim)", wordBreak: "break-word" }}>
+              Trending price: <span style={{ color: "var(--cream)", fontWeight: 600 }}>{approvedPrices[priceIndex % approvedPrices.length].item}</span>
               {" — "}
-              <span style={{ color: "var(--gold)", fontWeight: 700 }}>{prices[priceIndex % prices.length].price}</span>
-              {prices[priceIndex % prices.length].store && ` · ${prices[priceIndex % prices.length].store}`}
+              <span style={{ color: "var(--gold)", fontWeight: 700 }}>
+                {approvedPrices[priceIndex % approvedPrices.length].price || "price not reported"}
+              </span>
+              {approvedPrices[priceIndex % approvedPrices.length].store && ` · ${approvedPrices[priceIndex % approvedPrices.length].store}`}
             </span>
           ) : (
             <span className="mono text-xs" style={{ color: "var(--cream-dim)" }}>No price reports yet — be the first to share one.</span>
@@ -423,6 +686,11 @@ export default function StallDirectory() {
       )}
       {tab === "directory" && !loading && (
         <div className="max-w-4xl mx-auto px-6 py-6">
+          {listingPhotoNote && (
+            <p className="nudge rounded px-3 py-2 text-xs mb-4 flex items-start gap-1.5">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {listingPhotoNote}
+            </p>
+          )}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <div className="flex items-center gap-2 flex-1 px-3 rounded-lg" style={{ border: "1px solid var(--line)" }}>
               <Search size={16} style={{ color: "var(--cream-dim)" }} />
@@ -441,6 +709,27 @@ export default function StallDirectory() {
               <Plus size={16} /> List your stall
             </button>
           </div>
+
+          {featuredListing && !query && filter === "All" && (
+            <div className="rounded-lg overflow-hidden relative mb-6" style={{ border: "1px solid var(--line)" }}>
+              <img src={featuredListing.photos[0]} alt={featuredListing.name} className="w-full h-44 sm:h-52 object-cover" />
+              <div
+                className="absolute inset-0 flex flex-col justify-end p-4"
+                style={{ background: "linear-gradient(to top, rgba(0,0,0,0.72), rgba(0,0,0,0.05) 60%)" }}
+              >
+                <span className="mono text-[10px] px-2 py-0.5 rounded-full self-start mb-1.5" style={{ background: "var(--gold)", color: "#fff", fontWeight: 700 }}>
+                  Featured this week
+                </span>
+                <h3 className="display text-xl sm:text-2xl" style={{ color: "#fff", fontWeight: 700 }}>{featuredListing.name}</h3>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <span className="mono text-xs flex items-center gap-1" style={{ color: "#f0f0f0" }}>
+                    <MapPin size={12} /> {featuredListing.area}
+                  </span>
+                  <span className="mono text-xs" style={{ color: "var(--gold)", fontWeight: 700 }}>{featuredListing.price}</span>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="flex gap-2 mb-6 flex-wrap">
             {CATS.map((c) => (
@@ -464,6 +753,8 @@ export default function StallDirectory() {
               </select>
               <input name="area" required placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
               <input name="price" required placeholder="Price range" className="rounded px-3 py-2 text-sm" />
+              <input name="whatsapp" required placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm sm:col-span-2" />
+              <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
               <textarea name="blurb" required placeholder="Short description" className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <div className="sm:col-span-2">
                 <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
@@ -494,26 +785,40 @@ export default function StallDirectory() {
                 <button type="button" onClick={() => { setShowAdd(false); setPhotoPreview([]); }} className="pill rounded-lg px-4 py-2 text-sm flex items-center gap-1">
                   <X size={14} /> Cancel
                 </button>
-                <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm">Add listing</button>
+                <button type="submit" disabled={submittingListing} className="btn-primary rounded-lg px-4 py-2 text-sm" style={submittingListing ? { opacity: 0.6, cursor: "wait" } : {}}>
+                  {submittingListing ? "Uploading photos…" : "Add listing"}
+                </button>
               </div>
             </form>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
             {filtered.map((l) => (
               <div key={l.id} className="card rounded-lg overflow-hidden relative">
                 <div className="pin-corner" style={{ zIndex: 2 }} />
                 {l.photos && l.photos.length > 0 ? (
                   <div className="relative">
-                    <img src={l.photos[0]} alt={l.name} className="w-full h-36 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => openLightbox(l.photos, 0, l.name)}
+                      className="block w-full"
+                      style={{ padding: 0, border: "none", background: "none", cursor: "pointer" }}
+                    >
+                      <img src={l.photos[0]} alt={l.name} className="w-full h-32 sm:h-40 object-cover" />
+                    </button>
                     {l.photos.length > 1 && (
-                      <span className="mono text-[10px] px-1.5 py-0.5 rounded absolute bottom-2 right-2" style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }}>
+                      <button
+                        type="button"
+                        onClick={() => openLightbox(l.photos, 0, l.name)}
+                        className="mono text-[10px] px-1.5 py-0.5 rounded absolute bottom-2 right-2"
+                        style={{ background: "rgba(0,0,0,0.55)", color: "#fff", border: "none", cursor: "pointer" }}
+                      >
                         +{l.photos.length - 1} more
-                      </span>
+                      </button>
                     )}
                   </div>
                 ) : (
-                  <div className="w-full h-36 flex items-center justify-center" style={{ background: "var(--line)", opacity: 0.35 }}>
+                  <div className="w-full h-32 sm:h-40 flex items-center justify-center" style={{ background: "var(--line)", opacity: 0.35 }}>
                     <Wheat size={28} style={{ color: "var(--cream-dim)" }} />
                   </div>
                 )}
@@ -565,9 +870,25 @@ export default function StallDirectory() {
                     <Flag size={11} /> Reported — thanks, we'll take a look.
                   </p>
                 )}
-                <button className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm" style={{ background: "#25D366", color: "#FFFFFF", fontWeight: 600 }}>
-                  <MessageCircle size={14} /> Contact on WhatsApp
-                </button>
+                {waLink(l.whatsapp, l.name) ? (
+                  <a
+                    href={waLink(l.whatsapp, l.name)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm"
+                    style={{ background: "#25D366", color: "#FFFFFF", fontWeight: 600, textDecoration: "none" }}
+                  >
+                    <MessageCircle size={14} /> Contact on WhatsApp
+                  </a>
+                ) : (
+                  <button
+                    disabled
+                    className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm"
+                    style={{ background: "var(--line)", color: "var(--cream-dim)", fontWeight: 600, cursor: "not-allowed" }}
+                  >
+                    <MessageCircle size={14} /> No WhatsApp number on file
+                  </button>
+                )}
                 <p className="nudge mt-2 rounded px-2 py-1.5 text-[11px] flex items-start gap-1.5">
                   <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                   Never send full payment before you've confirmed order details directly with the seller.
@@ -656,6 +977,11 @@ export default function StallDirectory() {
       {/* USED TOOLS MARKETPLACE */}
       {tab === "tools" && (
         <div className="max-w-4xl mx-auto px-6 py-6">
+          {toolPhotoNote && (
+            <p className="nudge rounded px-3 py-2 text-xs mb-4 flex items-start gap-1.5">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {toolPhotoNote}
+            </p>
+          )}
           <div className="flex flex-col sm:flex-row gap-3 mb-4">
             <div className="flex items-center gap-2 flex-1 px-3 rounded-lg" style={{ border: "1px solid var(--line)" }}>
               <Search size={16} style={{ color: "var(--cream-dim)" }} />
@@ -696,6 +1022,8 @@ export default function StallDirectory() {
               <input name="price" required placeholder="Price (e.g. GH₵350)" className="rounded px-3 py-2 text-sm" />
               <input name="location" required placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
               <input name="seller" required placeholder="Your name" className="rounded px-3 py-2 text-sm" />
+              <input name="whatsapp" required placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm" />
+              <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
               <textarea name="description" required placeholder="Condition, age, why you're selling..." className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <div className="sm:col-span-2">
                 <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
@@ -724,25 +1052,39 @@ export default function StallDirectory() {
                 <button type="button" onClick={() => { setShowAddTool(false); setToolPhotoPreview([]); }} className="pill rounded-lg px-4 py-2 text-sm flex items-center gap-1">
                   <X size={14} /> Cancel
                 </button>
-                <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm">List item</button>
+                <button type="submit" disabled={submittingTool} className="btn-primary rounded-lg px-4 py-2 text-sm" style={submittingTool ? { opacity: 0.6, cursor: "wait" } : {}}>
+                  {submittingTool ? "Uploading photos…" : "List item"}
+                </button>
               </div>
             </form>
           )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
             {filteredTools.map((t) => (
               <div key={t.id} className="card rounded-lg overflow-hidden relative">
                 {t.photos && t.photos.length > 0 ? (
                   <div className="relative">
-                    <img src={t.photos[0]} alt={t.title} className="w-full h-36 object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => openLightbox(t.photos, 0, t.title)}
+                      className="block w-full"
+                      style={{ padding: 0, border: "none", background: "none", cursor: "pointer" }}
+                    >
+                      <img src={t.photos[0]} alt={t.title} className="w-full h-32 sm:h-40 object-cover" />
+                    </button>
                     {t.photos.length > 1 && (
-                      <span className="mono text-[10px] px-1.5 py-0.5 rounded absolute bottom-2 right-2" style={{ background: "rgba(0,0,0,0.55)", color: "#fff" }}>
+                      <button
+                        type="button"
+                        onClick={() => openLightbox(t.photos, 0, t.title)}
+                        className="mono text-[10px] px-1.5 py-0.5 rounded absolute bottom-2 right-2"
+                        style={{ background: "rgba(0,0,0,0.55)", color: "#fff", border: "none", cursor: "pointer" }}
+                      >
                         +{t.photos.length - 1} more
-                      </span>
+                      </button>
                     )}
                   </div>
                 ) : (
-                  <div className="w-full h-36 flex items-center justify-center" style={{ background: "var(--line)", opacity: 0.35 }}>
+                  <div className="w-full h-32 sm:h-40 flex items-center justify-center" style={{ background: "var(--line)", opacity: 0.35 }}>
                     <Wrench size={28} style={{ color: "var(--cream-dim)" }} />
                   </div>
                 )}
@@ -781,9 +1123,25 @@ export default function StallDirectory() {
                       <Flag size={11} /> Reported — thanks, we'll take a look.
                     </p>
                   )}
-                  <button className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm" style={{ background: "#25D366", color: "#FFFFFF", fontWeight: 600 }}>
-                    <MessageCircle size={14} /> Contact on WhatsApp
-                  </button>
+                  {waLink(t.whatsapp, t.title) ? (
+                    <a
+                      href={waLink(t.whatsapp, t.title)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm"
+                      style={{ background: "#25D366", color: "#FFFFFF", fontWeight: 600, textDecoration: "none" }}
+                    >
+                      <MessageCircle size={14} /> Contact on WhatsApp
+                    </a>
+                  ) : (
+                    <button
+                      disabled
+                      className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm"
+                      style={{ background: "var(--line)", color: "var(--cream-dim)", fontWeight: 600, cursor: "not-allowed" }}
+                    >
+                      <MessageCircle size={14} /> No WhatsApp number on file
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
@@ -802,6 +1160,164 @@ export default function StallDirectory() {
           A Cake Vocation Community Initiative
         </p>
       </div>
+
+      {manageOpen && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.45)", zIndex: 50 }}
+          onClick={closeManage}
+        >
+          <div
+            className="card rounded-lg p-5 w-full max-w-md max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="display text-lg" style={{ fontWeight: 600 }}>Manage my listing</h3>
+              <button onClick={closeManage}><X size={18} /></button>
+            </div>
+
+            {manageStep === "lookup" && (
+              <form onSubmit={lookupMyListings}>
+                <p className="text-sm mb-3" style={{ color: "var(--cream-dim)" }}>
+                  Enter the WhatsApp number you used when you posted, and we'll pull up your listings so you can edit them.
+                </p>
+                <input
+                  value={manageWhatsapp}
+                  onChange={(e) => setManageWhatsapp(e.target.value)}
+                  placeholder="WhatsApp number, e.g. 233241234567"
+                  className="rounded px-3 py-2 text-sm w-full mb-2"
+                />
+                {manageError && <p className="text-xs mb-2" style={{ color: "var(--clay)" }}>{manageError}</p>}
+                <button type="submit" disabled={manageLoading} className="btn-primary rounded-lg px-4 py-2 text-sm w-full">
+                  {manageLoading ? "Looking up…" : "Find my listings"}
+                </button>
+              </form>
+            )}
+
+            {manageStep === "results" && (
+              <div>
+                {manageResults.length === 0 ? (
+                  <p className="text-sm" style={{ color: "var(--cream-dim)" }}>
+                    No listings or tools found with that WhatsApp number. Double check the number, or make sure it matches exactly what you used when posting.
+                  </p>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    {manageResults.map((item) => (
+                      <button
+                        key={`${item.kind}-${item.id}`}
+                        onClick={() => startEditItem(item)}
+                        className="pill rounded-lg px-3 py-2 text-sm text-left flex items-center justify-between gap-2"
+                      >
+                        <span>
+                          {item.kind === "listing" ? item.name : item.title}
+                          {item.status === "pending" && (
+                            <span className="mono text-[10px] ml-2" style={{ color: "var(--cream-dim)" }}>(pending review)</span>
+                          )}
+                        </span>
+                        <span className="mono text-xs" style={{ color: "var(--cream-dim)" }}>Edit →</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={() => setManageStep("lookup")}
+                  className="mono text-xs mt-3 flex items-center gap-1"
+                  style={{ color: "var(--cream-dim)" }}
+                >
+                  ← Try a different number
+                </button>
+              </div>
+            )}
+
+            {manageStep === "edit" && editingItem && (
+              <form onSubmit={saveEditedItem} className="flex flex-col gap-2">
+                {editingItem.kind === "listing" ? (
+                  <>
+                    <input name="name" required defaultValue={editingItem.name} placeholder="Stall / business name" className="rounded px-3 py-2 text-sm" />
+                    <select name="type" defaultValue={editingItem.type} className="rounded px-3 py-2 text-sm" style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}>
+                      <option value="baker">Baker</option>
+                      <option value="caterer">Caterer</option>
+                      <option value="supplier">Supplier</option>
+                    </select>
+                    <input name="area" required defaultValue={editingItem.area} placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
+                    <input name="price" required defaultValue={editingItem.price} placeholder="Price range" className="rounded px-3 py-2 text-sm" />
+                    <textarea name="blurb" required defaultValue={editingItem.blurb} placeholder="Short description" rows={2} className="rounded px-3 py-2 text-sm" />
+                  </>
+                ) : (
+                  <>
+                    <input name="title" required defaultValue={editingItem.title} placeholder="What are you selling?" className="rounded px-3 py-2 text-sm" />
+                    <input name="price" required defaultValue={editingItem.price} placeholder="Price" className="rounded px-3 py-2 text-sm" />
+                    <input name="location" required defaultValue={editingItem.location} placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
+                    <select name="category" defaultValue={editingItem.category} className="rounded px-3 py-2 text-sm" style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}>
+                      {TOOL_CATS.filter((c) => c !== "All").map((c) => <option key={c}>{c}</option>)}
+                    </select>
+                    <textarea name="description" required defaultValue={editingItem.description} placeholder="Condition, age, why you're selling..." rows={2} className="rounded px-3 py-2 text-sm" />
+                  </>
+                )}
+                <p className="text-xs" style={{ color: "var(--cream-dim)" }}>
+                  Note: photos can't be changed here yet — post a new listing if you need to update photos.
+                </p>
+                {manageSaved && <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Saved!</p>}
+                <div className="flex gap-2 justify-end mt-1">
+                  <button type="button" onClick={() => setManageStep("results")} className="pill rounded-lg px-4 py-2 text-sm">Back</button>
+                  <button type="submit" disabled={manageLoading} className="btn-primary rounded-lg px-4 py-2 text-sm">
+                    {manageLoading ? "Saving…" : "Save changes"}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.85)", zIndex: 60 }}
+          onClick={closeLightbox}
+        >
+          <button
+            onClick={closeLightbox}
+            className="fixed top-4 right-4"
+            style={{ color: "#fff", background: "none", border: "none", cursor: "pointer" }}
+          >
+            <X size={28} />
+          </button>
+
+          <div className="relative max-w-2xl w-full flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+            {lightbox.photos.length > 1 && (
+              <button
+                onClick={lightboxPrev}
+                className="absolute left-0 sm:-left-12 flex items-center justify-center"
+                style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "9999px", width: 40, height: 40, cursor: "pointer" }}
+              >
+                ‹
+              </button>
+            )}
+            <div className="flex flex-col items-center gap-2 w-full">
+              <img
+                src={lightbox.photos[lightbox.index]}
+                alt={lightbox.title}
+                className="max-h-[75vh] w-auto max-w-full rounded-lg object-contain"
+              />
+              <div className="flex items-center gap-2">
+                <span className="mono text-xs" style={{ color: "#fff" }}>
+                  {lightbox.title} — {lightbox.index + 1} / {lightbox.photos.length}
+                </span>
+              </div>
+            </div>
+            {lightbox.photos.length > 1 && (
+              <button
+                onClick={lightboxNext}
+                className="absolute right-0 sm:-right-12 flex items-center justify-center"
+                style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "9999px", width: 40, height: 40, cursor: "pointer" }}
+              >
+                ›
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

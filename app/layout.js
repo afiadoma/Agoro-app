@@ -1,4 +1,5 @@
 import "./globals.css";
+import RegisterSW from "./RegisterSW";
 
 export const metadata = {
   title: "Agoro",
@@ -20,7 +21,10 @@ export const viewport = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body style={{ margin: 0, background: "#FFFFFF" }}>{children}</body>
+      <body style={{ margin: 0, background: "#FFFFFF" }}>
+        <RegisterSW />
+        {children}
+      </body>
     </html>
   );
 }

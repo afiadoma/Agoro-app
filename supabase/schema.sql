@@ -6,6 +6,7 @@ create table listings (
   type text not null check (type in ('baker','caterer','supplier')),
   area text not null,
   price text not null,
+  whatsapp text,
   overflow boolean default false,
   verified boolean default true,
   blurb text not null,
@@ -39,6 +40,7 @@ create table tools (
   location text not null,
   category text not null,
   seller text not null,
+  whatsapp text,
   photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   created_at timestamptz default now()
@@ -70,15 +72,20 @@ alter table tools enable row level security;
 alter table prices enable row level security;
 alter table reports enable row level security;
 
-create policy "public read approved listings" on listings for select using (status = 'approved');
+-- Read policies are open (not just approved) so the "manage my listing" flow can
+-- look up a person's own pending/rejected rows by WhatsApp number. The app itself
+-- filters to status='approved' for the public directory/forum/tools views.
+create policy "public read listings" on listings for select using (true);
 create policy "public insert listings" on listings for insert with check (true);
-create policy "public read approved threads" on threads for select using (status = 'approved');
+create policy "public update listings" on listings for update using (true) with check (true);
+create policy "public read threads" on threads for select using (true);
 create policy "public insert threads" on threads for insert with check (true);
-create policy "public read approved replies" on replies for select using (status = 'approved');
+create policy "public read replies" on replies for select using (true);
 create policy "public insert replies" on replies for insert with check (true);
-create policy "public read approved tools" on tools for select using (status = 'approved');
+create policy "public read tools" on tools for select using (true);
 create policy "public insert tools" on tools for insert with check (true);
-create policy "public read approved prices" on prices for select using (status = 'approved');
+create policy "public update tools" on tools for update using (true) with check (true);
+create policy "public read prices" on prices for select using (true);
 create policy "public insert prices" on prices for insert with check (true);
 create policy "public insert reports" on reports for insert with check (true);
 
