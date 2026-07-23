@@ -192,11 +192,12 @@ export default function StallDirectory() {
       const { data: replyRows } = await supabase.from("replies").select("*").order("created_at", { ascending: true });
       const { data: toolRows } = await supabase.from("tools").select("*").order("created_at", { ascending: false });
       const { data: priceRows } = await supabase.from("prices").select("*").order("created_at", { ascending: false });
+      const { data: adRow } = await supabase.from("ad_banner").select("*").eq("id", 1).maybeSingle();
 
       setListings(
         (listingRows || []).map((l) => ({
           id: l.id, name: l.name, type: l.type, area: l.area, price: l.price, whatsapp: l.whatsapp,
-          overflow: l.overflow, verified: l.verified, listedOn: l.created_at?.slice(0, 10), blurb: l.blurb,
+          overflow: l.overflow, verified: l.verified, featured: l.featured, listedOn: l.created_at?.slice(0, 10), blurb: l.blurb,
           photos: l.photos || [], status: l.status,
         }))
       );
@@ -218,6 +219,9 @@ export default function StallDirectory() {
           postedOn: p.created_at?.slice(0, 10), status: p.status,
         }))
       );
+      if (adRow) {
+        setAdBanner({ image: adRow.image, link: adRow.link, label: adRow.label });
+      }
       setLoading(false);
     })();
   }, []);
@@ -253,6 +257,7 @@ export default function StallDirectory() {
   );
 
   const featuredListing =
+    filtered.find((l) => l.featured && l.photos && l.photos.length > 0) ||
     filtered.find((l) => l.verified && l.photos && l.photos.length > 0) ||
     filtered.find((l) => l.photos && l.photos.length > 0) ||
     null;

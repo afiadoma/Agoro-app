@@ -9,11 +9,23 @@ create table listings (
   whatsapp text,
   overflow boolean default false,
   verified boolean default true,
+  featured boolean default false,
   blurb text not null,
   photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   created_at timestamptz default now()
 );
+
+-- Single-row table controlling the ad banner at the top of the app.
+-- Edit the one row directly in Table Editor to change/remove the ad.
+create table ad_banner (
+  id int primary key default 1,
+  image text,
+  link text,
+  label text,
+  constraint single_row check (id = 1)
+);
+insert into ad_banner (id, image, link, label) values (1, null, null, null);
 
 create table threads (
   id uuid primary key default gen_random_uuid(),
@@ -87,6 +99,11 @@ create policy "public insert tools" on tools for insert with check (true);
 create policy "public update tools" on tools for update using (true) with check (true);
 create policy "public read prices" on prices for select using (true);
 create policy "public insert prices" on prices for insert with check (true);
+
+alter table ad_banner enable row level security;
+create policy "public read ad banner" on ad_banner for select using (true);
+-- No public insert/update policy on purpose — you edit the single row yourself
+-- in Table Editor, which uses your Supabase login and bypasses RLS.
 create policy "public insert reports" on reports for insert with check (true);
 
 -- Storage bucket for listing photos. Run this too, then in
