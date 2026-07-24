@@ -84,6 +84,8 @@ function formatDate(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
 }
 
+const BLURB_MAX = 220;
+
 function waLink(number, itemName) {
   if (!number) return null;
   const message = `Hi! I saw your listing for "${itemName}" on Agoro and I'm interested.`;
@@ -177,6 +179,19 @@ export default function StallDirectory() {
   }
   function lightboxPrev() {
     setLightbox((lb) => (lb ? { ...lb, index: (lb.index - 1 + lb.photos.length) % lb.photos.length } : lb));
+  }
+  const touchStartX = useRef(null);
+  function handleLightboxTouchStart(e) {
+    touchStartX.current = e.touches[0].clientX;
+  }
+  function handleLightboxTouchEnd(e) {
+    if (touchStartX.current === null) return;
+    const dx = e.changedTouches[0].clientX - touchStartX.current;
+    if (Math.abs(dx) > 40) {
+      if (dx < 0) lightboxNext();
+      else lightboxPrev();
+    }
+    touchStartX.current = null;
   }
 
   // Synchronous guards against double-tap duplicate submissions — state-based
@@ -483,16 +498,24 @@ export default function StallDirectory() {
   async function lookupMyListings(e) {
     e.preventDefault();
     setManageError("");
-    const digits = manageWhatsapp.replace(/[^0-9]/g, "");
-    if (!digits) {
-      setManageError("Enter the WhatsApp number you used when posting.");
+    const raw = manageWhatsapp.trim();
+    const digits = raw.replace(/[^0-9]/g, "");
+    if (!raw) {
+      setManageError("Enter your WhatsApp number, or the business/item name you posted under.");
       return;
     }
     setManageLoading(true);
     if (supabase) {
+      const filters = [];
+      if (digits) filters.push(`whatsapp.eq.${digits}`);
+      filters.push(`name.ilike.%${raw}%`);
+      const toolFilters = [];
+      if (digits) toolFilters.push(`whatsapp.eq.${digits}`);
+      toolFilters.push(`title.ilike.%${raw}%`);
+
       const [{ data: myListings }, { data: myTools }] = await Promise.all([
-        supabase.from("listings").select("*").eq("whatsapp", digits).order("created_at", { ascending: false }),
-        supabase.from("tools").select("*").eq("whatsapp", digits).order("created_at", { ascending: false }),
+        supabase.from("listings").select("*").or(filters.join(",")).order("created_at", { ascending: false }),
+        supabase.from("tools").select("*").or(toolFilters.join(",")).order("created_at", { ascending: false }),
       ]);
       const combined = [
         ...(myListings || []).map((l) => ({ kind: "listing", ...l })),
@@ -502,8 +525,12 @@ export default function StallDirectory() {
     } else {
       // demo mode without Supabase — search whatever's in local state
       const combined = [
-        ...listings.filter((l) => l.whatsapp === digits).map((l) => ({ kind: "listing", ...l })),
-        ...tools.filter((t) => t.whatsapp === digits).map((t) => ({ kind: "tool", ...t })),
+        ...listings
+          .filter((l) => (digits && l.whatsapp === digits) || l.name.toLowerCase().includes(raw.toLowerCase()))
+          .map((l) => ({ kind: "listing", ...l })),
+        ...tools
+          .filter((t) => (digits && t.whatsapp === digits) || t.title.toLowerCase().includes(raw.toLowerCase()))
+          .map((t) => ({ kind: "tool", ...t })),
       ];
       setManageResults(combined);
     }
@@ -529,6 +556,7 @@ export default function StallDirectory() {
         area: f.area.value,
         price: f.price.value,
         blurb: f.blurb.value,
+        whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
       };
       if (supabase) {
         await supabase.from("listings").update(updates).eq("id", editingItem.id);
@@ -541,6 +569,7 @@ export default function StallDirectory() {
         price: f.price.value,
         location: f.location.value,
         category: f.category.value,
+        whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
       };
       if (supabase) {
         await supabase.from("tools").update(updates).eq("id", editingItem.id);
@@ -760,7 +789,8 @@ export default function StallDirectory() {
               <input name="price" required placeholder="Price range" className="rounded px-3 py-2 text-sm" />
               <input name="whatsapp" required placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm sm:col-span-2" />
               <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
-              <textarea name="blurb" required placeholder="Short description" className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
+              <textarea name="blurb" required maxLength={BLURB_MAX} placeholder="Short description" className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
+              <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Keep it short — {BLURB_MAX} characters max, so it fits nicely on your card.</p>
               <div className="sm:col-span-2">
                 <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
                 <input
@@ -854,7 +884,18 @@ export default function StallDirectory() {
                   <MapPin size={12} /> {l.area}
                   <span className="mono">· listed {formatDate(l.listedOn)}</span>
                 </div>
-                <p className="text-sm mt-2" style={{ color: "var(--cream-dim)" }}>{l.blurb}</p>
+                <p
+                  className="text-sm mt-2"
+                  style={{
+                    color: "var(--cream-dim)",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 3,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {l.blurb}
+                </p>
                 <div className="flex items-center justify-between mt-3">
                   <span className="mono text-xs" style={{ color: "var(--gold)" }}>{l.price}</span>
                   <div className="flex items-center gap-1 flex-wrap justify-end">
@@ -1029,7 +1070,8 @@ export default function StallDirectory() {
               <input name="seller" required placeholder="Your name" className="rounded px-3 py-2 text-sm" />
               <input name="whatsapp" required placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm" />
               <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
-              <textarea name="description" required placeholder="Condition, age, why you're selling..." className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
+              <textarea name="description" required maxLength={BLURB_MAX} placeholder="Condition, age, why you're selling..." className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
+              <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Keep it short — {BLURB_MAX} characters max, so it fits nicely on your card.</p>
               <div className="sm:col-span-2">
                 <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
                 <input
@@ -1119,7 +1161,18 @@ export default function StallDirectory() {
                   <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: "var(--cream-dim)" }}>
                     <MapPin size={12} /> {t.location} · sold by {t.seller}
                   </div>
-                  <p className="text-sm mt-2" style={{ color: "var(--cream-dim)" }}>{t.description}</p>
+                  <p
+                    className="text-sm mt-2"
+                    style={{
+                      color: "var(--cream-dim)",
+                      display: "-webkit-box",
+                      WebkitLineClamp: 3,
+                      WebkitBoxOrient: "vertical",
+                      overflow: "hidden",
+                    }}
+                  >
+                    {t.description}
+                  </p>
                   <div className="mt-3">
                     <span className="mono text-base" style={{ color: "var(--gold)", fontWeight: 700 }}>{t.price}</span>
                   </div>
@@ -1184,12 +1237,12 @@ export default function StallDirectory() {
             {manageStep === "lookup" && (
               <form onSubmit={lookupMyListings}>
                 <p className="text-sm mb-3" style={{ color: "var(--cream-dim)" }}>
-                  Enter the WhatsApp number you used when you posted, and we'll pull up your listings so you can edit them.
+                  Enter your WhatsApp number, or the business/item name you posted under, and we'll pull up your listings so you can edit them.
                 </p>
                 <input
                   value={manageWhatsapp}
                   onChange={(e) => setManageWhatsapp(e.target.value)}
-                  placeholder="WhatsApp number, e.g. 233241234567"
+                  placeholder="WhatsApp number or business name"
                   className="rounded px-3 py-2 text-sm w-full mb-2"
                 />
                 {manageError && <p className="text-xs mb-2" style={{ color: "var(--clay)" }}>{manageError}</p>}
@@ -1246,17 +1299,21 @@ export default function StallDirectory() {
                     </select>
                     <input name="area" required defaultValue={editingItem.area} placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
                     <input name="price" required defaultValue={editingItem.price} placeholder="Price range" className="rounded px-3 py-2 text-sm" />
-                    <textarea name="blurb" required defaultValue={editingItem.blurb} placeholder="Short description" rows={2} className="rounded px-3 py-2 text-sm" />
+                    <input name="whatsapp" required defaultValue={editingItem.whatsapp} placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm" />
+                    <textarea name="blurb" required maxLength={BLURB_MAX} defaultValue={editingItem.blurb} placeholder="Short description" rows={2} className="rounded px-3 py-2 text-sm" />
+                    <p className="text-xs -mt-1" style={{ color: "var(--cream-dim)" }}>{BLURB_MAX} characters max.</p>
                   </>
                 ) : (
                   <>
                     <input name="title" required defaultValue={editingItem.title} placeholder="What are you selling?" className="rounded px-3 py-2 text-sm" />
                     <input name="price" required defaultValue={editingItem.price} placeholder="Price" className="rounded px-3 py-2 text-sm" />
                     <input name="location" required defaultValue={editingItem.location} placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
+                    <input name="whatsapp" required defaultValue={editingItem.whatsapp} placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm" />
                     <select name="category" defaultValue={editingItem.category} className="rounded px-3 py-2 text-sm" style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}>
                       {TOOL_CATS.filter((c) => c !== "All").map((c) => <option key={c}>{c}</option>)}
                     </select>
-                    <textarea name="description" required defaultValue={editingItem.description} placeholder="Condition, age, why you're selling..." rows={2} className="rounded px-3 py-2 text-sm" />
+                    <textarea name="description" required maxLength={BLURB_MAX} defaultValue={editingItem.description} placeholder="Condition, age, why you're selling..." rows={2} className="rounded px-3 py-2 text-sm" />
+                    <p className="text-xs -mt-1" style={{ color: "var(--cream-dim)" }}>{BLURB_MAX} characters max.</p>
                   </>
                 )}
                 <p className="text-xs" style={{ color: "var(--cream-dim)" }}>
@@ -1280,6 +1337,8 @@ export default function StallDirectory() {
           className="fixed inset-0 flex items-center justify-center p-4"
           style={{ background: "rgba(0,0,0,0.85)", zIndex: 60 }}
           onClick={closeLightbox}
+          onTouchStart={handleLightboxTouchStart}
+          onTouchEnd={handleLightboxTouchEnd}
         >
           <button
             onClick={closeLightbox}
@@ -1293,8 +1352,8 @@ export default function StallDirectory() {
             {lightbox.photos.length > 1 && (
               <button
                 onClick={lightboxPrev}
-                className="absolute left-0 sm:-left-12 flex items-center justify-center"
-                style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "9999px", width: 40, height: 40, cursor: "pointer" }}
+                className="absolute left-2 sm:-left-14 top-1/2 flex items-center justify-center"
+                style={{ color: "#fff", background: "rgba(0,0,0,0.5)", border: "none", borderRadius: "9999px", width: 44, height: 44, cursor: "pointer", transform: "translateY(-50%)", fontSize: 24, zIndex: 61 }}
               >
                 ‹
               </button>
@@ -1314,8 +1373,8 @@ export default function StallDirectory() {
             {lightbox.photos.length > 1 && (
               <button
                 onClick={lightboxNext}
-                className="absolute right-0 sm:-right-12 flex items-center justify-center"
-                style={{ color: "#fff", background: "rgba(255,255,255,0.15)", border: "none", borderRadius: "9999px", width: 40, height: 40, cursor: "pointer" }}
+                className="absolute right-2 sm:-right-14 top-1/2 flex items-center justify-center"
+                style={{ color: "#fff", background: "rgba(0,0,0,0.5)", border: "none", borderRadius: "9999px", width: 44, height: 44, cursor: "pointer", transform: "translateY(-50%)", fontSize: 24, zIndex: 61 }}
               >
                 ›
               </button>
