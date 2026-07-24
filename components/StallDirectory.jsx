@@ -333,7 +333,11 @@ export default function StallDirectory() {
         edit_pin: f.pin.value.trim(),
       };
       if (supabase) {
-        await supabase.from("listings").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
+        const { error: insertError } = await supabase.from("listings").insert(draft);
+        if (insertError) {
+          setListingPhotoNote(`Your listing wasn't saved: ${insertError.message}`);
+          return;
+        }
       }
       setListings([{ ...draft, id: Date.now(), listedOn: new Date().toISOString().slice(0, 10) }, ...listings]);
       setShowAdd(false);
@@ -420,7 +424,11 @@ export default function StallDirectory() {
         edit_pin: f.pin.value.trim(),
       };
       if (supabase) {
-        await supabase.from("tools").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
+        const { error: insertError } = await supabase.from("tools").insert(draft);
+        if (insertError) {
+          setToolPhotoNote(`Your listing wasn't saved: ${insertError.message}`);
+          return;
+        }
       }
       setTools([{ ...draft, id: Date.now(), postedOn: new Date().toISOString().slice(0, 10) }, ...tools]);
       setShowAddTool(false);
@@ -594,7 +602,12 @@ export default function StallDirectory() {
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
       };
       if (supabase) {
-        await supabase.from("listings").update(updates).eq("id", editingItem.id);
+        const { error: updateError } = await supabase.from("listings").update(updates).eq("id", editingItem.id);
+        if (updateError) {
+          setManageError(`Couldn't save: ${updateError.message}`);
+          setManageLoading(false);
+          return;
+        }
       }
       setListings((prev) => prev.map((l) => (l.id === editingItem.id ? { ...l, ...updates } : l)));
     } else {
@@ -608,7 +621,12 @@ export default function StallDirectory() {
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
       };
       if (supabase) {
-        await supabase.from("tools").update(updates).eq("id", editingItem.id);
+        const { error: updateError } = await supabase.from("tools").update(updates).eq("id", editingItem.id);
+        if (updateError) {
+          setManageError(`Couldn't save: ${updateError.message}`);
+          setManageLoading(false);
+          return;
+        }
       }
       setTools((prev) => prev.map((t) => (t.id === editingItem.id ? { ...t, ...updates } : t)));
     }
