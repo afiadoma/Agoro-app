@@ -162,6 +162,8 @@ export default function StallDirectory() {
   const [manageResults, setManageResults] = useState([]); // [{kind:'listing'|'tool', ...row}]
   const [manageLoading, setManageLoading] = useState(false);
   const [manageError, setManageError] = useState("");
+  const [pinInput, setPinInput] = useState("");
+  const [pinError, setPinError] = useState("");
   const [editingItem, setEditingItem] = useState(null); // {kind, ...row}
   const [manageSaved, setManageSaved] = useState(false);
 
@@ -328,6 +330,7 @@ export default function StallDirectory() {
         blurb: f.blurb.value,
         photos,
         status: "pending",
+        edit_pin: f.pin.value.trim(),
       };
       if (supabase) {
         await supabase.from("listings").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
@@ -414,6 +417,7 @@ export default function StallDirectory() {
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
         photos,
         status: "pending",
+        edit_pin: f.pin.value.trim(),
       };
       if (supabase) {
         await supabase.from("tools").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
@@ -489,6 +493,8 @@ export default function StallDirectory() {
     setManageError("");
     setEditingItem(null);
     setManageSaved(false);
+    setPinInput("");
+    setPinError("");
   }
 
   function closeManage() {
@@ -505,6 +511,7 @@ export default function StallDirectory() {
       return;
     }
     setManageLoading(true);
+
     if (supabase) {
       const filters = [];
       if (digits) filters.push(`whatsapp.eq.${digits}`);
@@ -540,13 +547,40 @@ export default function StallDirectory() {
 
   function startEditItem(item) {
     setEditingItem({ ...item });
-    setManageStep("edit");
+    setPinInput("");
+    setPinError("");
+    // Legacy items posted before PINs existed have no edit_pin yet — let the
+    // owner straight in this one time, but they'll be required to set a PIN
+    // while editing, which protects it going forward.
+    setManageStep(item.edit_pin ? "pin" : "edit");
+  }
+
+  function confirmPin(e) {
+    e.preventDefault();
+    if (!editingItem) return;
+    if (pinInput.trim() === editingItem.edit_pin) {
+      setPinError("");
+      setManageStep("edit");
+    } else {
+      setPinError("That PIN doesn't match. If you've forgotten it, you'll need to post a new listing.");
+    }
   }
 
   async function saveEditedItem(e) {
     e.preventDefault();
     if (!editingItem) return;
     const f = e.target;
+
+    // Legacy items posted before PINs existed require setting one now, as a
+    // condition of this edit — protects the listing going forward.
+    if (!editingItem.edit_pin) {
+      const newPin = f.newPin.value.trim();
+      if (!newPin || newPin.length < 4) {
+        setManageError("Please set a PIN (at least 4 digits) to protect this listing going forward.");
+        return;
+      }
+    }
+    setManageError("");
     setManageLoading(true);
 
     if (editingItem.kind === "listing") {
@@ -557,6 +591,7 @@ export default function StallDirectory() {
         price: f.price.value,
         blurb: f.blurb.value,
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
+        edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
       };
       if (supabase) {
         await supabase.from("listings").update(updates).eq("id", editingItem.id);
@@ -570,6 +605,7 @@ export default function StallDirectory() {
         location: f.location.value,
         category: f.category.value,
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
+        edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
       };
       if (supabase) {
         await supabase.from("tools").update(updates).eq("id", editingItem.id);
@@ -788,6 +824,8 @@ export default function StallDirectory() {
               <input name="area" required placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
               <input name="price" required placeholder="Price range" className="rounded px-3 py-2 text-sm" />
               <input name="whatsapp" required placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm sm:col-span-2" />
+              <input name="pin" required minLength={4} maxLength={6} inputMode="numeric" placeholder="Set a 4-digit PIN (to edit this later)" className="rounded px-3 py-2 text-sm sm:col-span-2" />
+              <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Remember this PIN — you'll need it to edit your listing later. It's private, not shown to anyone else.</p>
               <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
               <textarea name="blurb" required maxLength={BLURB_MAX} placeholder="Short description" className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Keep it short — {BLURB_MAX} characters max, so it fits nicely on your card.</p>
@@ -1069,6 +1107,8 @@ export default function StallDirectory() {
               <input name="location" required placeholder="Area / city" className="rounded px-3 py-2 text-sm" />
               <input name="seller" required placeholder="Your name" className="rounded px-3 py-2 text-sm" />
               <input name="whatsapp" required placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm" />
+              <input name="pin" required minLength={4} maxLength={6} inputMode="numeric" placeholder="Set a 4-digit PIN (to edit this later)" className="rounded px-3 py-2 text-sm" />
+              <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Remember this PIN — you'll need it to edit your listing later. It's private, not shown to anyone else.</p>
               <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
               <textarea name="description" required maxLength={BLURB_MAX} placeholder="Condition, age, why you're selling..." className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Keep it short — {BLURB_MAX} characters max, so it fits nicely on your card.</p>
@@ -1256,7 +1296,7 @@ export default function StallDirectory() {
               <div>
                 {manageResults.length === 0 ? (
                   <p className="text-sm" style={{ color: "var(--cream-dim)" }}>
-                    No listings or tools found with that WhatsApp number. Double check the number, or make sure it matches exactly what you used when posting.
+                    No listings or tools found with that WhatsApp number or name. Double check what you entered.
                   </p>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -1285,6 +1325,26 @@ export default function StallDirectory() {
                   ← Try a different number
                 </button>
               </div>
+            )}
+
+            {manageStep === "pin" && editingItem && (
+              <form onSubmit={confirmPin}>
+                <p className="text-sm mb-3" style={{ color: "var(--cream-dim)" }}>
+                  Enter the PIN you set when you posted <strong>{editingItem.kind === "listing" ? editingItem.name : editingItem.title}</strong> to edit it.
+                </p>
+                <input
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  placeholder="Your PIN"
+                  inputMode="numeric"
+                  className="rounded px-3 py-2 text-sm w-full mb-2"
+                />
+                {pinError && <p className="text-xs mb-2" style={{ color: "var(--clay)" }}>{pinError}</p>}
+                <div className="flex gap-2 justify-end">
+                  <button type="button" onClick={() => setManageStep("results")} className="pill rounded-lg px-4 py-2 text-sm">Back</button>
+                  <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm">Confirm PIN</button>
+                </div>
+              </form>
             )}
 
             {manageStep === "edit" && editingItem && (
@@ -1319,6 +1379,15 @@ export default function StallDirectory() {
                 <p className="text-xs" style={{ color: "var(--cream-dim)" }}>
                   Note: photos can't be changed here yet — post a new listing if you need to update photos.
                 </p>
+                {!editingItem.edit_pin && (
+                  <>
+                    <input name="newPin" required minLength={4} maxLength={6} inputMode="numeric" placeholder="Set a 4-digit PIN (required to protect this listing)" className="rounded px-3 py-2 text-sm" />
+                    <p className="text-xs -mt-1" style={{ color: "var(--cream-dim)" }}>
+                      This listing was posted before PINs existed — set one now so only you can edit it from here on.
+                    </p>
+                  </>
+                )}
+                {manageError && <p className="text-xs" style={{ color: "var(--clay)" }}>{manageError}</p>}
                 {manageSaved && <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Saved!</p>}
                 <div className="flex gap-2 justify-end mt-1">
                   <button type="button" onClick={() => setManageStep("results")} className="pill rounded-lg px-4 py-2 text-sm">Back</button>
