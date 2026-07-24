@@ -1,4 +1,11 @@
 -- Run this in the Supabase SQL editor for your new project (one time setup)
+--
+-- If your project already exists and predates the `edit_pin` / `whatsapp`
+-- columns below, run this migration instead of the full script:
+--   alter table listings add column if not exists whatsapp text;
+--   alter table listings add column if not exists edit_pin text;
+--   alter table tools add column if not exists whatsapp text;
+--   alter table tools add column if not exists edit_pin text;
 
 create table listings (
   id uuid primary key default gen_random_uuid(),
@@ -13,6 +20,7 @@ create table listings (
   blurb text not null,
   photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  edit_pin text,
   created_at timestamptz default now()
 );
 
@@ -55,6 +63,7 @@ create table tools (
   whatsapp text,
   photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  edit_pin text,
   created_at timestamptz default now()
 );
 

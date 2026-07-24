@@ -133,6 +133,9 @@ export default function StallDirectory() {
   const [photoPreview, setPhotoPreview] = useState([]);
   const [submittingListing, setSubmittingListing] = useState(false);
   const [listingPhotoNote, setListingPhotoNote] = useState("");
+  // Ids of items just submitted in this session — shown to their own submitter
+  // right away even though they're "pending" and hidden from everyone else.
+  const [myListingIds, setMyListingIds] = useState(() => new Set());
 
   const [forumFilter, setForumFilter] = useState("All");
   const [threads, setThreads] = useState(supabase ? [] : SEED_THREADS);
@@ -147,6 +150,7 @@ export default function StallDirectory() {
   const [toolPhotoPreview, setToolPhotoPreview] = useState([]);
   const [submittingTool, setSubmittingTool] = useState(false);
   const [toolPhotoNote, setToolPhotoNote] = useState("");
+  const [myToolIds, setMyToolIds] = useState(() => new Set());
 
   const [prices, setPrices] = useState(supabase ? [] : SEED_PRICES);
   const [showAddPrice, setShowAddPrice] = useState(false);
@@ -255,7 +259,7 @@ export default function StallDirectory() {
 
   const filtered = listings.filter(
     (l) =>
-      l.status === "approved" &&
+      (l.status === "approved" || myListingIds.has(l.id)) &&
       (filter === "All" || l.type === filter) &&
       (l.name.toLowerCase().includes(query.toLowerCase()) ||
         l.area.toLowerCase().includes(query.toLowerCase()) ||
@@ -266,7 +270,7 @@ export default function StallDirectory() {
 
   const filteredTools = tools.filter(
     (t) =>
-      t.status === "approved" &&
+      (t.status === "approved" || myToolIds.has(t.id)) &&
       (toolFilter === "All" || t.category === toolFilter) &&
       (t.title.toLowerCase().includes(toolQuery.toLowerCase()) ||
         t.location.toLowerCase().includes(toolQuery.toLowerCase()) ||
@@ -333,13 +337,17 @@ export default function StallDirectory() {
         edit_pin: f.pin.value.trim(),
       };
       if (supabase) {
-        const { error: insertError } = await supabase.from("listings").insert(draft);
+        // .select() forces Supabase to report RLS/schema failures as a real
+        // error instead of returning 201 success while writing zero rows.
+        const { error: insertError } = await supabase.from("listings").insert(draft).select();
         if (insertError) {
           setListingPhotoNote(`Your listing wasn't saved: ${insertError.message}`);
           return;
         }
       }
-      setListings([{ ...draft, id: Date.now(), listedOn: new Date().toISOString().slice(0, 10) }, ...listings]);
+      const newId = Date.now();
+      setListings([{ ...draft, id: newId, listedOn: new Date().toISOString().slice(0, 10) }, ...listings]);
+      setMyListingIds((prev) => new Set(prev).add(newId));
       setShowAdd(false);
       setPhotoPreview([]);
       f.reset();
@@ -424,13 +432,15 @@ export default function StallDirectory() {
         edit_pin: f.pin.value.trim(),
       };
       if (supabase) {
-        const { error: insertError } = await supabase.from("tools").insert(draft);
+        const { error: insertError } = await supabase.from("tools").insert(draft).select();
         if (insertError) {
           setToolPhotoNote(`Your listing wasn't saved: ${insertError.message}`);
           return;
         }
       }
-      setTools([{ ...draft, id: Date.now(), postedOn: new Date().toISOString().slice(0, 10) }, ...tools]);
+      const newId = Date.now();
+      setTools([{ ...draft, id: newId, postedOn: new Date().toISOString().slice(0, 10) }, ...tools]);
+      setMyToolIds((prev) => new Set(prev).add(newId));
       setShowAddTool(false);
       setToolPhotoPreview([]);
       f.reset();
