@@ -612,9 +612,16 @@ export default function StallDirectory() {
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
       };
       if (supabase) {
-        const { error: updateError } = await supabase.from("listings").update(updates).eq("id", editingItem.id);
+        // .select() forces Supabase to report a failed/blocked update as a real
+        // error instead of returning success while updating zero rows.
+        const { data: updateData, error: updateError } = await supabase.from("listings").update(updates).eq("id", editingItem.id).select();
         if (updateError) {
           setManageError(`Couldn't save: ${updateError.message}`);
+          setManageLoading(false);
+          return;
+        }
+        if (!updateData || updateData.length === 0) {
+          setManageError("Couldn't save: the listing wasn't found or you don't have permission to edit it.");
           setManageLoading(false);
           return;
         }
@@ -631,9 +638,14 @@ export default function StallDirectory() {
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
       };
       if (supabase) {
-        const { error: updateError } = await supabase.from("tools").update(updates).eq("id", editingItem.id);
+        const { data: updateData, error: updateError } = await supabase.from("tools").update(updates).eq("id", editingItem.id).select();
         if (updateError) {
           setManageError(`Couldn't save: ${updateError.message}`);
+          setManageLoading(false);
+          return;
+        }
+        if (!updateData || updateData.length === 0) {
+          setManageError("Couldn't save: the listing wasn't found or you don't have permission to edit it.");
           setManageLoading(false);
           return;
         }
