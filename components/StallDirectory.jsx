@@ -170,6 +170,9 @@ export default function StallDirectory() {
   const [pinError, setPinError] = useState("");
   const [editingItem, setEditingItem] = useState(null); // {kind, ...row}
   const [manageSaved, setManageSaved] = useState(false);
+  const [editKeepPhotos, setEditKeepPhotos] = useState([]); // existing photo URLs not yet removed
+  const [editNewPhotoPreviews, setEditNewPhotoPreviews] = useState([]);
+  const [editPhotoNote, setEditPhotoNote] = useState("");
 
   // Photo lightbox — view all photos on a listing/tool, not just the first one
   const [lightbox, setLightbox] = useState(null); // { photos: [], index: 0, title: '' }
@@ -567,6 +570,9 @@ export default function StallDirectory() {
     setEditingItem({ ...item });
     setPinInput("");
     setPinError("");
+    setEditKeepPhotos(item.photos || []);
+    setEditNewPhotoPreviews([]);
+    setEditPhotoNote("");
     // Legacy items posted before PINs existed have no edit_pin yet — let the
     // owner straight in this one time, but they'll be required to set a PIN
     // while editing, which protects it going forward.
@@ -599,7 +605,33 @@ export default function StallDirectory() {
       }
     }
     setManageError("");
+    setEditPhotoNote("");
     setManageLoading(true);
+
+    const newFiles = f.newPhotos ? Array.from(f.newPhotos.files).slice(0, 4 - editKeepPhotos.length) : [];
+    let uploadedPhotoUrls = [];
+    let failedPhotoCount = 0;
+    if (supabase && newFiles.length) {
+      const uploads = await Promise.all(
+        newFiles.map(async (file) => {
+          const compressed = await compressImage(file);
+          const prefix = editingItem.kind === "tool" ? "tools/" : "";
+          const path = `${prefix}${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+          let { error } = await supabase.storage.from("listing-photos").upload(path, compressed);
+          if (error) {
+            // one retry — mobile connections drop mid-upload sometimes
+            ({ error } = await supabase.storage.from("listing-photos").upload(path, compressed));
+          }
+          if (error) {
+            failedPhotoCount += 1;
+            return null;
+          }
+          return supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl;
+        })
+      );
+      uploadedPhotoUrls = uploads.filter(Boolean);
+    }
+    const finalPhotos = [...editKeepPhotos, ...uploadedPhotoUrls];
 
     if (editingItem.kind === "listing") {
       const updates = {
@@ -610,6 +642,7 @@ export default function StallDirectory() {
         blurb: f.blurb.value,
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
+        photos: finalPhotos,
       };
       if (supabase) {
         // .select() forces Supabase to report a failed/blocked update as a real
@@ -636,6 +669,7 @@ export default function StallDirectory() {
         category: f.category.value,
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
+        photos: finalPhotos,
       };
       if (supabase) {
         const { data: updateData, error: updateError } = await supabase.from("tools").update(updates).eq("id", editingItem.id).select();
@@ -655,9 +689,13 @@ export default function StallDirectory() {
 
     setManageLoading(false);
     setManageSaved(true);
-    setTimeout(() => {
-      setManageOpen(false);
-    }, 1500);
+    if (failedPhotoCount > 0) {
+      setEditPhotoNote(`Saved, but ${failedPhotoCount} new photo${failedPhotoCount > 1 ? "s" : ""} didn't upload — check your connection and try adding ${failedPhotoCount > 1 ? "them" : "it"} again.`);
+    } else {
+      setTimeout(() => {
+        setManageOpen(false);
+      }, 1500);
+    }
   }
 
   return (
@@ -1416,9 +1454,51 @@ export default function StallDirectory() {
                     <p className="text-xs -mt-1" style={{ color: "var(--cream-dim)" }}>{BLURB_MAX} characters max.</p>
                   </>
                 )}
-                <p className="text-xs" style={{ color: "var(--cream-dim)" }}>
-                  Note: photos can't be changed here yet — post a new listing if you need to update photos.
-                </p>
+                <div>
+                  <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
+                  {editKeepPhotos.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      {editKeepPhotos.map((url, i) => (
+                        <div key={url + i} className="relative">
+                          <img src={url} alt="" className="w-14 h-14 object-cover rounded" style={{ border: "1px solid var(--line)" }} />
+                          <button
+                            type="button"
+                            onClick={() => setEditKeepPhotos((prev) => prev.filter((_, idx) => idx !== i))}
+                            title="Remove photo"
+                            className="absolute flex items-center justify-center rounded-full"
+                            style={{ top: -6, right: -6, width: 18, height: 18, background: "var(--clay)", color: "#fff", border: "none", cursor: "pointer" }}
+                          >
+                            <X size={11} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {editKeepPhotos.length + editNewPhotoPreviews.length < 4 && (
+                    <input
+                      type="file"
+                      name="newPhotos"
+                      accept="image/*"
+                      multiple
+                      onChange={(e) => {
+                        const slotsLeft = 4 - editKeepPhotos.length;
+                        setEditNewPhotoPreviews(Array.from(e.target.files).slice(0, slotsLeft).map((file) => URL.createObjectURL(file)));
+                      }}
+                      className="text-xs w-full rounded px-3 py-2"
+                      style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}
+                    />
+                  )}
+                  {editNewPhotoPreviews.length > 0 && (
+                    <div className="flex gap-2 flex-wrap mt-2">
+                      {editNewPhotoPreviews.map((src, i) => (
+                        <img key={i} src={src} alt="" className="w-14 h-14 object-cover rounded" style={{ border: "1px solid var(--line)" }} />
+                      ))}
+                    </div>
+                  )}
+                  {editPhotoNote && (
+                    <p className="text-xs mt-1" style={{ color: "var(--clay)" }}>{editPhotoNote}</p>
+                  )}
+                </div>
                 {!editingItem.edit_pin && (
                   <>
                     <input name="newPin" required minLength={4} maxLength={6} inputMode="numeric" placeholder="Set a 4-digit PIN (required to protect this listing)" className="rounded px-3 py-2 text-sm" />
