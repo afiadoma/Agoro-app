@@ -804,7 +804,6 @@ export default function StallDirectory() {
         <div className="flex items-center justify-between max-w-4xl mx-auto flex-wrap gap-2">
           <img src="/agoro-logo.png" alt="Agoro" style={{ height: 168, width: "auto" }} />
           <div className="flex items-center gap-3">
-            <span className="mono text-xs" style={{ color: "var(--cream-dim)" }}>400 members · 120 active</span>
             <button
               onClick={openManage}
               className="pill rounded-full px-3 py-1.5 text-xs mono flex items-center gap-1.5 shrink-0"
