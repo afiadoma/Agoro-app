@@ -6,6 +6,10 @@
 --   alter table listings add column if not exists edit_pin text;
 --   alter table tools add column if not exists whatsapp text;
 --   alter table tools add column if not exists edit_pin text;
+--
+-- If your project predates `faq` / `contact_click_count` / the `reviews`
+-- table, see migrations/reviews_faq_analytics.sql for the migration to run
+-- instead of the full script.
 
 create table listings (
   id uuid primary key default gen_random_uuid(),
@@ -21,6 +25,8 @@ create table listings (
   photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   edit_pin text,
+  faq text,
+  contact_click_count int not null default 0,
   created_at timestamptz default now()
 );
 
@@ -64,6 +70,8 @@ create table tools (
   photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   edit_pin text,
+  faq text,
+  contact_click_count int not null default 0,
   created_at timestamptz default now()
 );
 
@@ -83,6 +91,17 @@ create table reports (
   created_at timestamptz default now()
 );
 
+create table reviews (
+  id uuid primary key default gen_random_uuid(),
+  item_id uuid not null, -- id of the reviewed item; can point to either listings.id or tools.id, not FK-constrained on purpose (same pattern as reports)
+  kind text not null check (kind in ('listing','tool')),
+  reviewer text not null,
+  rating int not null check (rating between 1 and 5),
+  text text,
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  created_at timestamptz default now()
+);
+
 -- Row Level Security: open read/write for now since sign-up is limited to
 -- your existing group and you're manually reviewing reports. Tighten this
 -- (e.g. require auth) before opening the app beyond the trusted group.
@@ -92,6 +111,7 @@ alter table replies enable row level security;
 alter table tools enable row level security;
 alter table prices enable row level security;
 alter table reports enable row level security;
+alter table reviews enable row level security;
 
 -- Read policies are open (not just approved) so the "manage my listing" flow can
 -- look up a person's own pending/rejected rows by WhatsApp number. The app itself
@@ -114,6 +134,39 @@ create policy "public read ad banner" on ad_banner for select using (true);
 -- No public insert/update policy on purpose — you edit the single row yourself
 -- in Table Editor, which uses your Supabase login and bypasses RLS.
 create policy "public insert reports" on reports for insert with check (true);
+
+-- Reviews follow the same open+moderated pattern as prices/threads: anyone can
+-- read (so pending counts don't leak into the public average) and insert;
+-- only approved reviews are shown/counted client-side.
+create policy "public read reviews" on reviews for select using (true);
+create policy "public insert reviews" on reviews for insert with check (true);
+
+-- Explicit grants alongside the policies above — a policy alone isn't enough
+-- if the underlying table grant is missing (see the insert/update debugging
+-- history for listings/tools; don't skip this step again).
+grant select, insert on reviews to anon, authenticated;
+grant update (contact_click_count) on listings to anon, authenticated;
+grant update (contact_click_count) on tools to anon, authenticated;
+
+-- Atomic click-counter increment, callable without needing a broad update
+-- grant on the whole row — security definer bypasses RLS for just this one
+-- narrow operation (increment a counter by table+id, nothing else).
+create or replace function increment_contact_click(p_table text, p_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_table = 'listings' then
+    update listings set contact_click_count = contact_click_count + 1 where id = p_id;
+  elsif p_table = 'tools' then
+    update tools set contact_click_count = contact_click_count + 1 where id = p_id;
+  end if;
+end;
+$$;
+
+grant execute on function increment_contact_click(text, uuid) to anon, authenticated;
 
 -- Storage bucket for listing photos. Run this too, then in
 -- Supabase → Storage, confirm the "listing-photos" bucket is set to Public

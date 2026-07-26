@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, MessageCircle, Plus, X, ArrowUpRight, Wheat, ShieldCheck, Flag, AlertTriangle, Wrench, Tag, TrendingUp, Share2 } from "lucide-react";
+import { Search, MapPin, MessageCircle, Plus, X, ArrowUpRight, Wheat, ShieldCheck, Flag, AlertTriangle, Wrench, Tag, TrendingUp, Share2, Star, Heart, HelpCircle } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
 const TOKENS = `
@@ -82,6 +82,11 @@ const SEED_PRICES = [
 
 function formatDate(iso) {
   return new Date(iso + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+}
+
+function renderStars(rating) {
+  const rounded = Math.round(rating);
+  return "★".repeat(rounded) + "☆".repeat(5 - rounded);
 }
 
 const BLURB_MAX = 220;
@@ -174,6 +179,18 @@ export default function StallDirectory() {
   const [editNewPhotoPreviews, setEditNewPhotoPreviews] = useState([]);
   const [editPhotoNote, setEditPhotoNote] = useState("");
 
+  // Reviews — open+moderated like threads/prices; only approved ones count/show.
+  const [reviews, setReviews] = useState([]);
+  const [openReviews, setOpenReviews] = useState(null); // `${kind}-${id}` currently expanded
+  const [reviewFormOpen, setReviewFormOpen] = useState(null); // `${kind}-${id}` showing the leave-a-review form
+  const [reviewSubmitted, setReviewSubmitted] = useState({}); // { [`${kind}-${id}`]: true } — thank-you message
+  const [reviewError, setReviewError] = useState({}); // { [`${kind}-${id}`]: message }
+
+  // Favorites — device-local only (no accounts in this app), persisted in localStorage.
+  const [favorites, setFavorites] = useState(() => new Set());
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [showFavoritesOnlyTools, setShowFavoritesOnlyTools] = useState(false);
+
   // Photo lightbox — view all photos on a listing/tool, not just the first one
   const [lightbox, setLightbox] = useState(null); // { photos: [], index: 0, title: '' }
 
@@ -209,6 +226,15 @@ export default function StallDirectory() {
   const toolSubmitLock = useRef(false);
 
   useEffect(() => {
+    try {
+      const raw = localStorage.getItem("agoro_favorites");
+      if (raw) setFavorites(new Set(JSON.parse(raw)));
+    } catch {
+      // localStorage unavailable (private browsing, etc.) — favorites just won't persist
+    }
+  }, []);
+
+  useEffect(() => {
     if (!supabase) return; // no env vars set yet — running on seed data only
     (async () => {
       const { data: listingRows } = await supabase.from("listings").select("*").order("created_at", { ascending: false });
@@ -216,13 +242,14 @@ export default function StallDirectory() {
       const { data: replyRows } = await supabase.from("replies").select("*").order("created_at", { ascending: true });
       const { data: toolRows } = await supabase.from("tools").select("*").order("created_at", { ascending: false });
       const { data: priceRows } = await supabase.from("prices").select("*").order("created_at", { ascending: false });
+      const { data: reviewRows } = await supabase.from("reviews").select("*").order("created_at", { ascending: false });
       const { data: adRow } = await supabase.from("ad_banner").select("*").eq("id", 1).maybeSingle();
 
       setListings(
         (listingRows || []).map((l) => ({
           id: l.id, name: l.name, type: l.type, area: l.area, price: l.price, whatsapp: l.whatsapp,
           overflow: l.overflow, verified: l.verified, featured: l.featured, listedOn: l.created_at?.slice(0, 10), blurb: l.blurb,
-          photos: l.photos || [], status: l.status,
+          photos: l.photos || [], status: l.status, faq: l.faq, contactClickCount: l.contact_click_count || 0,
         }))
       );
       setThreads(
@@ -235,12 +262,18 @@ export default function StallDirectory() {
         (toolRows || []).map((t) => ({
           id: t.id, title: t.title, description: t.description, price: t.price, location: t.location, whatsapp: t.whatsapp,
           category: t.category, seller: t.seller, postedOn: t.created_at?.slice(0, 10), photos: t.photos || [], status: t.status,
+          faq: t.faq, contactClickCount: t.contact_click_count || 0,
         }))
       );
       setPrices(
         (priceRows || []).map((p) => ({
           id: p.id, item: p.item, price: p.price, store: p.store, reporter: p.reporter,
           postedOn: p.created_at?.slice(0, 10), status: p.status,
+        }))
+      );
+      setReviews(
+        (reviewRows || []).map((r) => ({
+          id: r.id, itemId: r.item_id, kind: r.kind, reviewer: r.reviewer, rating: r.rating, text: r.text, status: r.status,
         }))
       );
       if (adRow) {
@@ -264,6 +297,7 @@ export default function StallDirectory() {
     (l) =>
       (l.status === "approved" || myListingIds.has(l.id)) &&
       (filter === "All" || l.type === filter) &&
+      (!showFavoritesOnly || favorites.has(`listing-${l.id}`)) &&
       (l.name.toLowerCase().includes(query.toLowerCase()) ||
         l.area.toLowerCase().includes(query.toLowerCase()) ||
         l.blurb.toLowerCase().includes(query.toLowerCase()))
@@ -275,6 +309,7 @@ export default function StallDirectory() {
     (t) =>
       (t.status === "approved" || myToolIds.has(t.id)) &&
       (toolFilter === "All" || t.category === toolFilter) &&
+      (!showFavoritesOnlyTools || favorites.has(`tool-${t.id}`)) &&
       (t.title.toLowerCase().includes(toolQuery.toLowerCase()) ||
         t.location.toLowerCase().includes(toolQuery.toLowerCase()) ||
         t.description.toLowerCase().includes(toolQuery.toLowerCase()))
@@ -285,6 +320,63 @@ export default function StallDirectory() {
     filtered.find((l) => l.verified && l.photos && l.photos.length > 0) ||
     filtered.find((l) => l.photos && l.photos.length > 0) ||
     null;
+
+  function approvedReviewsFor(kind, id) {
+    return reviews.filter((r) => r.kind === kind && r.itemId === id && r.status === "approved");
+  }
+  function ratingSummary(kind, id) {
+    const rs = approvedReviewsFor(kind, id);
+    if (rs.length === 0) return null;
+    const avg = rs.reduce((sum, r) => sum + r.rating, 0) / rs.length;
+    return { avg, count: rs.length };
+  }
+
+  async function addReview(kind, itemId, e) {
+    e.preventDefault();
+    const f = e.target;
+    const key = `${kind}-${itemId}`;
+    const draft = {
+      item_id: itemId,
+      kind,
+      reviewer: f.reviewer.value,
+      rating: Number(f.rating.value),
+      text: f.text.value,
+      status: "pending",
+    };
+    if (supabase) {
+      const { error } = await supabase.from("reviews").insert(draft).select();
+      if (error) {
+        setReviewError((prev) => ({ ...prev, [key]: `Couldn't submit: ${error.message}` }));
+        return;
+      }
+    }
+    setReviews((prev) => [{ id: Date.now(), itemId, kind, reviewer: draft.reviewer, rating: draft.rating, text: draft.text, status: "pending" }, ...prev]);
+    setReviewError((prev) => ({ ...prev, [key]: "" }));
+    setReviewFormOpen(null);
+    setReviewSubmitted((prev) => ({ ...prev, [key]: true }));
+    setTimeout(() => setReviewSubmitted((prev) => ({ ...prev, [key]: false })), 6000);
+  }
+
+  function toggleFavorite(kind, id) {
+    const key = `${kind}-${id}`;
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      try {
+        localStorage.setItem("agoro_favorites", JSON.stringify([...next]));
+      } catch {
+        // localStorage unavailable — favorite still works for this session
+      }
+      return next;
+    });
+  }
+
+  function trackContactClick(kind, id) {
+    if (!supabase) return;
+    const table = kind === "tool" ? "tools" : "listings";
+    supabase.rpc("increment_contact_click", { p_table: table, p_id: id }).then(() => {}, () => {});
+  }
 
   async function addListing(e) {
     e.preventDefault();
@@ -338,6 +430,7 @@ export default function StallDirectory() {
         photos,
         status: "pending",
         edit_pin: f.pin.value.trim(),
+        faq: f.faq.value.trim() || null,
       };
       if (supabase) {
         // .select() forces Supabase to report RLS/schema failures as a real
@@ -433,6 +526,7 @@ export default function StallDirectory() {
         photos,
         status: "pending",
         edit_pin: f.pin.value.trim(),
+        faq: f.faq.value.trim() || null,
       };
       if (supabase) {
         const { error: insertError } = await supabase.from("tools").insert(draft).select();
@@ -643,6 +737,7 @@ export default function StallDirectory() {
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
         photos: finalPhotos,
+        faq: f.faq.value.trim() || null,
       };
       if (supabase) {
         // .select() forces Supabase to report a failed/blocked update as a real
@@ -670,6 +765,7 @@ export default function StallDirectory() {
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
         edit_pin: editingItem.edit_pin || f.newPin.value.trim(),
         photos: finalPhotos,
+        faq: f.faq.value.trim() || null,
       };
       if (supabase) {
         const { data: updateData, error: updateError } = await supabase.from("tools").update(updates).eq("id", editingItem.id).select();
@@ -851,6 +947,12 @@ export default function StallDirectory() {
               />
             </div>
             <button
+              onClick={() => setShowFavoritesOnly(!showFavoritesOnly)}
+              className={`px-3 py-2 rounded-lg text-sm mono flex items-center gap-1 shrink-0 ${showFavoritesOnly ? "pill-active" : "pill"}`}
+            >
+              <Heart size={14} fill={showFavoritesOnly ? "#fff" : "none"} /> Saved
+            </button>
+            <button
               onClick={() => setShowAdd(!showAdd)}
               className="btn-primary rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1"
             >
@@ -907,6 +1009,7 @@ export default function StallDirectory() {
               <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
               <textarea name="blurb" required maxLength={BLURB_MAX} placeholder="Short description" className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Keep it short — {BLURB_MAX} characters max, so it fits nicely on your card.</p>
+              <textarea name="faq" maxLength={BLURB_MAX} placeholder="FAQ / anything buyers usually ask (optional) — e.g. delivery area, lead time, custom orders" className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <div className="sm:col-span-2">
                 <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
                 <input
@@ -944,7 +1047,11 @@ export default function StallDirectory() {
           )}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-            {filtered.map((l) => (
+            {filtered.map((l) => {
+              const favKey = `listing-${l.id}`;
+              const rating = ratingSummary("listing", l.id);
+              const reviewKey = `listing-${l.id}`;
+              return (
               <div key={l.id} className="card rounded-lg overflow-hidden relative">
                 <div className="pin-corner" style={{ zIndex: 2 }} />
                 {l.photos && l.photos.length > 0 ? (
@@ -973,6 +1080,15 @@ export default function StallDirectory() {
                     <Wheat size={28} style={{ color: "var(--cream-dim)" }} />
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite("listing", l.id)}
+                  title={favorites.has(favKey) ? "Remove from saved" : "Save"}
+                  className="absolute top-2 left-2 flex items-center justify-center rounded-full"
+                  style={{ width: 26, height: 26, background: "rgba(0,0,0,0.45)", border: "none", cursor: "pointer", zIndex: 2 }}
+                >
+                  <Heart size={13} fill={favorites.has(favKey) ? "#D2402A" : "none"} color={favorites.has(favKey) ? "#D2402A" : "#fff"} />
+                </button>
                 <div className="p-4">
                 <div className="flex items-start justify-between gap-2">
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1000,6 +1116,18 @@ export default function StallDirectory() {
                   <MapPin size={12} /> {l.area}
                   <span className="mono">· listed {formatDate(l.listedOn)}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setOpenReviews(openReviews === reviewKey ? null : reviewKey)}
+                  className="flex items-center gap-1 mt-1 text-xs"
+                  style={{ color: rating ? "var(--gold)" : "var(--cream-dim)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                >
+                  {rating ? (
+                    <><span className="mono">{renderStars(rating.avg)}</span> {rating.avg.toFixed(1)} ({rating.count})</>
+                  ) : (
+                    <span className="mono">No reviews yet</span>
+                  )}
+                </button>
                 <p
                   className="text-sm mt-2"
                   style={{
@@ -1012,6 +1140,11 @@ export default function StallDirectory() {
                 >
                   {l.blurb}
                 </p>
+                {l.faq && (
+                  <p className="text-xs mt-2 flex items-start gap-1" style={{ color: "var(--cream-dim)" }}>
+                    <HelpCircle size={12} className="shrink-0 mt-0.5" /> {l.faq}
+                  </p>
+                )}
                 <div className="flex items-center justify-between mt-3">
                   <span className="mono text-xs" style={{ color: "var(--gold)" }}>{l.price}</span>
                   <div className="flex items-center gap-1 flex-wrap justify-end">
@@ -1037,6 +1170,7 @@ export default function StallDirectory() {
                     href={waLink(l.whatsapp, l.name)}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={() => trackContactClick("listing", l.id)}
                     className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm"
                     style={{ background: "#25D366", color: "#FFFFFF", fontWeight: 600, textDecoration: "none" }}
                   >
@@ -1055,9 +1189,55 @@ export default function StallDirectory() {
                   <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                   Never send full payment before you've confirmed order details directly with the seller.
                 </p>
+                {openReviews === reviewKey && (
+                  <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
+                    {approvedReviewsFor("listing", l.id).length === 0 ? (
+                      <p className="text-xs" style={{ color: "var(--cream-dim)" }}>No reviews yet.</p>
+                    ) : (
+                      <div className="flex flex-col gap-2 mb-2">
+                        {approvedReviewsFor("listing", l.id).map((r) => (
+                          <div key={r.id} className="text-xs">
+                            <span className="mono" style={{ color: "var(--gold)" }}>{renderStars(r.rating)}</span>{" "}
+                            <span style={{ fontWeight: 600 }}>{r.reviewer}</span>
+                            {r.text && <span style={{ color: "var(--cream-dim)" }}> — {r.text}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {reviewSubmitted[reviewKey] ? (
+                      <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Thanks! Submitted for review.</p>
+                    ) : reviewFormOpen === reviewKey ? (
+                      <form onSubmit={(e) => addReview("listing", l.id, e)} className="flex flex-col gap-1.5 mt-1">
+                        <input name="reviewer" required placeholder="Your name" className="rounded px-2 py-1.5 text-xs" />
+                        <select name="rating" defaultValue="5" className="rounded px-2 py-1.5 text-xs" style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}>
+                          <option value="5">★★★★★ (5)</option>
+                          <option value="4">★★★★☆ (4)</option>
+                          <option value="3">★★★☆☆ (3)</option>
+                          <option value="2">★★☆☆☆ (2)</option>
+                          <option value="1">★☆☆☆☆ (1)</option>
+                        </select>
+                        <textarea name="text" maxLength={BLURB_MAX} placeholder="What was your experience? (optional)" rows={2} className="rounded px-2 py-1.5 text-xs" />
+                        {reviewError[reviewKey] && <p className="text-xs" style={{ color: "var(--clay)" }}>{reviewError[reviewKey]}</p>}
+                        <div className="flex gap-2 justify-end">
+                          <button type="button" onClick={() => setReviewFormOpen(null)} className="pill rounded-full px-3 py-1 text-xs">Cancel</button>
+                          <button type="submit" className="btn-primary rounded-full px-3 py-1 text-xs">Submit review</button>
+                        </div>
+                      </form>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setReviewFormOpen(reviewKey)}
+                        className="mono text-xs px-3 py-1 rounded-full pill"
+                      >
+                        Leave a review
+                      </button>
+                    )}
+                  </div>
+                )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {filtered.length === 0 && (
               <p className="text-sm col-span-2" style={{ color: "var(--cream-dim)" }}>No listings match yet — be the first to add one.</p>
             )}
@@ -1156,6 +1336,12 @@ export default function StallDirectory() {
               />
             </div>
             <button
+              onClick={() => setShowFavoritesOnlyTools(!showFavoritesOnlyTools)}
+              className={`px-3 py-2 rounded-lg text-sm mono flex items-center gap-1 shrink-0 ${showFavoritesOnlyTools ? "pill-active" : "pill"}`}
+            >
+              <Heart size={14} fill={showFavoritesOnlyTools ? "#fff" : "none"} /> Saved
+            </button>
+            <button
               onClick={() => setShowAddTool(!showAddTool)}
               className="btn-primary rounded-lg px-4 py-2 text-sm flex items-center justify-center gap-1"
             >
@@ -1190,6 +1376,7 @@ export default function StallDirectory() {
               <p className="text-xs sm:col-span-2 -mt-2" style={{ color: "var(--cream-dim)" }}>Include your country code, no spaces or dashes (Ghana: 233...)</p>
               <textarea name="description" required maxLength={BLURB_MAX} placeholder="Condition, age, why you're selling..." className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <p className="text-xs sm:col-span-2 -mt-1" style={{ color: "var(--cream-dim)" }}>Keep it short — {BLURB_MAX} characters max, so it fits nicely on your card.</p>
+              <textarea name="faq" maxLength={BLURB_MAX} placeholder="FAQ / anything buyers usually ask (optional)" className="rounded px-3 py-2 text-sm sm:col-span-2" rows={2} />
               <div className="sm:col-span-2">
                 <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
                 <input
@@ -1225,7 +1412,11 @@ export default function StallDirectory() {
           )}
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 sm:gap-4">
-            {filteredTools.map((t) => (
+            {filteredTools.map((t) => {
+              const favKey = `tool-${t.id}`;
+              const rating = ratingSummary("tool", t.id);
+              const reviewKey = `tool-${t.id}`;
+              return (
               <div key={t.id} className="card rounded-lg overflow-hidden relative">
                 {t.photos && t.photos.length > 0 ? (
                   <div className="relative">
@@ -1253,6 +1444,15 @@ export default function StallDirectory() {
                     <Wrench size={28} style={{ color: "var(--cream-dim)" }} />
                   </div>
                 )}
+                <button
+                  type="button"
+                  onClick={() => toggleFavorite("tool", t.id)}
+                  title={favorites.has(favKey) ? "Remove from saved" : "Save"}
+                  className="absolute top-2 left-2 flex items-center justify-center rounded-full"
+                  style={{ width: 26, height: 26, background: "rgba(0,0,0,0.45)", border: "none", cursor: "pointer", zIndex: 2 }}
+                >
+                  <Heart size={13} fill={favorites.has(favKey) ? "#D2402A" : "none"} color={favorites.has(favKey) ? "#D2402A" : "#fff"} />
+                </button>
                 <div className="p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -1279,6 +1479,18 @@ export default function StallDirectory() {
                   <div className="flex items-center gap-1 mt-1 text-xs" style={{ color: "var(--cream-dim)" }}>
                     <MapPin size={12} /> {t.location} · sold by {t.seller}
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => setOpenReviews(openReviews === reviewKey ? null : reviewKey)}
+                    className="flex items-center gap-1 mt-1 text-xs"
+                    style={{ color: rating ? "var(--gold)" : "var(--cream-dim)", background: "none", border: "none", padding: 0, cursor: "pointer" }}
+                  >
+                    {rating ? (
+                      <><span className="mono">{renderStars(rating.avg)}</span> {rating.avg.toFixed(1)} ({rating.count})</>
+                    ) : (
+                      <span className="mono">No reviews yet</span>
+                    )}
+                  </button>
                   <p
                     className="text-sm mt-2"
                     style={{
@@ -1291,6 +1503,11 @@ export default function StallDirectory() {
                   >
                     {t.description}
                   </p>
+                  {t.faq && (
+                    <p className="text-xs mt-2 flex items-start gap-1" style={{ color: "var(--cream-dim)" }}>
+                      <HelpCircle size={12} className="shrink-0 mt-0.5" /> {t.faq}
+                    </p>
+                  )}
                   <div className="mt-3">
                     <span className="mono text-base" style={{ color: "var(--gold)", fontWeight: 700 }}>{t.price}</span>
                   </div>
@@ -1304,6 +1521,7 @@ export default function StallDirectory() {
                       href={waLink(t.whatsapp, t.title)}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() => trackContactClick("tool", t.id)}
                       className="mt-3 w-full flex items-center justify-center gap-1 rounded-lg py-2 text-sm"
                       style={{ background: "#25D366", color: "#FFFFFF", fontWeight: 600, textDecoration: "none" }}
                     >
@@ -1318,9 +1536,55 @@ export default function StallDirectory() {
                       <MessageCircle size={14} /> No WhatsApp number on file
                     </button>
                   )}
+                  {openReviews === reviewKey && (
+                    <div className="mt-3 pt-3" style={{ borderTop: "1px solid var(--line)" }}>
+                      {approvedReviewsFor("tool", t.id).length === 0 ? (
+                        <p className="text-xs" style={{ color: "var(--cream-dim)" }}>No reviews yet.</p>
+                      ) : (
+                        <div className="flex flex-col gap-2 mb-2">
+                          {approvedReviewsFor("tool", t.id).map((r) => (
+                            <div key={r.id} className="text-xs">
+                              <span className="mono" style={{ color: "var(--gold)" }}>{renderStars(r.rating)}</span>{" "}
+                              <span style={{ fontWeight: 600 }}>{r.reviewer}</span>
+                              {r.text && <span style={{ color: "var(--cream-dim)" }}> — {r.text}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {reviewSubmitted[reviewKey] ? (
+                        <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Thanks! Submitted for review.</p>
+                      ) : reviewFormOpen === reviewKey ? (
+                        <form onSubmit={(e) => addReview("tool", t.id, e)} className="flex flex-col gap-1.5 mt-1">
+                          <input name="reviewer" required placeholder="Your name" className="rounded px-2 py-1.5 text-xs" />
+                          <select name="rating" defaultValue="5" className="rounded px-2 py-1.5 text-xs" style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}>
+                            <option value="5">★★★★★ (5)</option>
+                            <option value="4">★★★★☆ (4)</option>
+                            <option value="3">★★★☆☆ (3)</option>
+                            <option value="2">★★☆☆☆ (2)</option>
+                            <option value="1">★☆☆☆☆ (1)</option>
+                          </select>
+                          <textarea name="text" maxLength={BLURB_MAX} placeholder="What was your experience? (optional)" rows={2} className="rounded px-2 py-1.5 text-xs" />
+                          {reviewError[reviewKey] && <p className="text-xs" style={{ color: "var(--clay)" }}>{reviewError[reviewKey]}</p>}
+                          <div className="flex gap-2 justify-end">
+                            <button type="button" onClick={() => setReviewFormOpen(null)} className="pill rounded-full px-3 py-1 text-xs">Cancel</button>
+                            <button type="submit" className="btn-primary rounded-full px-3 py-1 text-xs">Submit review</button>
+                          </div>
+                        </form>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setReviewFormOpen(reviewKey)}
+                          className="mono text-xs px-3 py-1 rounded-full pill"
+                        >
+                          Leave a review
+                        </button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
-            ))}
+              );
+            })}
             {filteredTools.length === 0 && (
               <p className="text-sm col-span-2" style={{ color: "var(--cream-dim)" }}>No tools listed yet — be the first to sell something.</p>
             )}
@@ -1440,6 +1704,7 @@ export default function StallDirectory() {
                     <input name="whatsapp" required defaultValue={editingItem.whatsapp} placeholder="WhatsApp number, e.g. 233241234567" className="rounded px-3 py-2 text-sm" />
                     <textarea name="blurb" required maxLength={BLURB_MAX} defaultValue={editingItem.blurb} placeholder="Short description" rows={2} className="rounded px-3 py-2 text-sm" />
                     <p className="text-xs -mt-1" style={{ color: "var(--cream-dim)" }}>{BLURB_MAX} characters max.</p>
+                    <textarea name="faq" maxLength={BLURB_MAX} defaultValue={editingItem.faq || ""} placeholder="FAQ / anything buyers usually ask (optional)" rows={2} className="rounded px-3 py-2 text-sm" />
                   </>
                 ) : (
                   <>
@@ -1452,8 +1717,15 @@ export default function StallDirectory() {
                     </select>
                     <textarea name="description" required maxLength={BLURB_MAX} defaultValue={editingItem.description} placeholder="Condition, age, why you're selling..." rows={2} className="rounded px-3 py-2 text-sm" />
                     <p className="text-xs -mt-1" style={{ color: "var(--cream-dim)" }}>{BLURB_MAX} characters max.</p>
+                    <textarea name="faq" maxLength={BLURB_MAX} defaultValue={editingItem.faq || ""} placeholder="FAQ / anything buyers usually ask (optional)" rows={2} className="rounded px-3 py-2 text-sm" />
                   </>
                 )}
+                <p className="text-xs mono" style={{ color: "var(--cream-dim)" }}>
+                  {(() => {
+                    const clicks = editingItem.contact_click_count ?? editingItem.contactClickCount ?? 0;
+                    return `${clicks} WhatsApp contact click${clicks === 1 ? "" : "s"} so far`;
+                  })()}
+                </p>
                 <div>
                   <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photos (up to 4)</label>
                   {editKeepPhotos.length > 0 && (
