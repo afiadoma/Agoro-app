@@ -146,6 +146,8 @@ export default function StallDirectory() {
   const [threads, setThreads] = useState(supabase ? [] : SEED_THREADS);
   const [openThread, setOpenThread] = useState(null);
   const [showNewThread, setShowNewThread] = useState(false);
+  const [threadError, setThreadError] = useState("");
+  const [replyError, setReplyError] = useState({}); // { [threadId]: message }
 
   const [toolFilter, setToolFilter] = useState("All");
   const [toolQuery, setToolQuery] = useState("");
@@ -161,6 +163,7 @@ export default function StallDirectory() {
   const [showAddPrice, setShowAddPrice] = useState(false);
   const [priceIndex, setPriceIndex] = useState(0);
   const [priceSubmitted, setPriceSubmitted] = useState(false);
+  const [priceError, setPriceError] = useState("");
   const [shareCopied, setShareCopied] = useState(false);
   const [adBanner, setAdBanner] = useState(null); // { image, link, label } — set from Supabase once a real advertiser signs on
 
@@ -341,7 +344,7 @@ export default function StallDirectory() {
       reviewer: f.reviewer.value,
       rating: Number(f.rating.value),
       text: f.text.value,
-      status: "pending",
+      status: "approved",
     };
     if (supabase) {
       const { error } = await supabase.from("reviews").insert(draft).select();
@@ -350,7 +353,7 @@ export default function StallDirectory() {
         return;
       }
     }
-    setReviews((prev) => [{ id: Date.now(), itemId, kind, reviewer: draft.reviewer, rating: draft.rating, text: draft.text, status: "pending" }, ...prev]);
+    setReviews((prev) => [{ id: Date.now(), itemId, kind, reviewer: draft.reviewer, rating: draft.rating, text: draft.text, status: "approved" }, ...prev]);
     setReviewError((prev) => ({ ...prev, [key]: "" }));
     setReviewFormOpen(null);
     setReviewSubmitted((prev) => ({ ...prev, [key]: true }));
@@ -428,7 +431,7 @@ export default function StallDirectory() {
         verified: true,
         blurb: f.blurb.value,
         photos,
-        status: "pending",
+        status: "approved",
         edit_pin: f.pin.value.trim(),
         faq: f.faq.value.trim() || null,
       };
@@ -462,12 +465,35 @@ export default function StallDirectory() {
   async function addThread(e) {
     e.preventDefault();
     const f = e.target;
-    const draft = { category: f.category.value, title: f.title.value, status: "pending" };
+    const draft = { category: f.category.value, title: f.title.value, status: "approved" };
     if (supabase) {
-      await supabase.from("threads").insert(draft); // no .select() — pending rows aren't readable under RLS until approved
+      const { error } = await supabase.from("threads").insert(draft).select();
+      if (error) {
+        setThreadError(`Couldn't post: ${error.message}`);
+        return;
+      }
     }
+    setThreadError("");
     setThreads([{ ...draft, id: Date.now(), postedOn: new Date().toISOString().slice(0, 10), replies: [] }, ...threads]);
     setShowNewThread(false);
+    f.reset();
+  }
+
+  async function addReply(threadId, e) {
+    e.preventDefault();
+    const f = e.target;
+    const draft = { thread_id: threadId, author: f.author.value, text: f.text.value, status: "approved" };
+    if (supabase) {
+      const { error } = await supabase.from("replies").insert(draft).select();
+      if (error) {
+        setReplyError((prev) => ({ ...prev, [threadId]: `Couldn't post: ${error.message}` }));
+        return;
+      }
+    }
+    setReplyError((prev) => ({ ...prev, [threadId]: "" }));
+    setThreads((prev) =>
+      prev.map((t) => (t.id === threadId ? { ...t, replies: [...t.replies, { author: draft.author, text: draft.text }] } : t))
+    );
     f.reset();
   }
 
@@ -524,7 +550,7 @@ export default function StallDirectory() {
         seller: f.seller.value,
         whatsapp: f.whatsapp.value.replace(/[^0-9]/g, ""),
         photos,
-        status: "pending",
+        status: "approved",
         edit_pin: f.pin.value.trim(),
         faq: f.faq.value.trim() || null,
       };
@@ -566,11 +592,17 @@ export default function StallDirectory() {
       price: f.price.value,
       store: f.store.value,
       reporter: f.reporter.value,
-      status: "pending",
+      status: "approved",
     };
     if (supabase) {
-      await supabase.from("prices").insert(draft); // pending — won't show in the ticker until approved
+      const { error } = await supabase.from("prices").insert(draft).select();
+      if (error) {
+        setPriceError(`Couldn't submit: ${error.message}`);
+        return;
+      }
     }
+    setPriceError("");
+    setPrices([{ ...draft, id: Date.now(), postedOn: new Date().toISOString().slice(0, 10) }, ...prices]);
     setShowAddPrice(false);
     setPriceSubmitted(true);
     setTimeout(() => setPriceSubmitted(false), 4000);
@@ -886,6 +918,7 @@ export default function StallDirectory() {
             <input name="price" required placeholder="Price (e.g. GH₵95)" className="rounded px-3 py-2 text-sm" />
             <input name="store" placeholder="Store / market (optional)" className="rounded px-3 py-2 text-sm" />
             <input name="reporter" required placeholder="Your name" className="rounded px-3 py-2 text-sm sm:col-span-2" />
+            {priceError && <p className="text-xs sm:col-span-2" style={{ color: "var(--clay)" }}>{priceError}</p>}
             <div className="sm:col-span-2 flex gap-2 justify-end">
               <button type="button" onClick={() => setShowAddPrice(false)} className="pill rounded-lg px-4 py-2 text-sm flex items-center gap-1">
                 <X size={14} /> Cancel
@@ -897,7 +930,7 @@ export default function StallDirectory() {
       )}
       {priceSubmitted && (
         <div className="max-w-4xl mx-auto px-6">
-          <p className="text-xs mono mb-3" style={{ color: "var(--leaf-dark)" }}>Thanks! Submitted for review — it'll show in the ticker once approved.</p>
+          <p className="text-xs mono mb-3" style={{ color: "var(--leaf-dark)" }}>Thanks! Your price is live in the ticker.</p>
         </div>
       )}
 
@@ -1204,7 +1237,7 @@ export default function StallDirectory() {
                       </div>
                     )}
                     {reviewSubmitted[reviewKey] ? (
-                      <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Thanks! Submitted for review.</p>
+                      <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Thanks for the review!</p>
                     ) : reviewFormOpen === reviewKey ? (
                       <form onSubmit={(e) => addReview("listing", l.id, e)} className="flex flex-col gap-1.5 mt-1">
                         <input name="reviewer" required placeholder="Your name" className="rounded px-2 py-1.5 text-xs" />
@@ -1272,8 +1305,9 @@ export default function StallDirectory() {
               <input name="title" required placeholder="What do you want to ask the market?" className="rounded px-3 py-2 text-sm" />
               <p className="nudge rounded px-2 py-1.5 text-[11px] flex items-start gap-1.5">
                 <AlertTriangle size={12} className="shrink-0 mt-0.5" />
-                Please don't post phone numbers or contact details here — replies will help connect you directly. Posts are reviewed before they go live.
+                Please don't post phone numbers or contact details here — replies will help connect you directly.
               </p>
+              {threadError && <p className="text-xs" style={{ color: "var(--clay)" }}>{threadError}</p>}
               <div className="flex gap-2 justify-end">
                 <button type="button" onClick={() => setShowNewThread(false)} className="pill rounded-lg px-4 py-2 text-sm">Cancel</button>
                 <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm">Post</button>
@@ -1307,6 +1341,14 @@ export default function StallDirectory() {
                         <span style={{ color: "var(--cream-dim)" }}>{r.text}</span>
                       </div>
                     ))}
+                    <form onSubmit={(e) => addReply(t.id, e)} className="flex flex-col gap-1.5 mt-1">
+                      <input name="author" required placeholder="Your name" className="rounded px-2 py-1.5 text-xs" />
+                      <textarea name="text" required maxLength={BLURB_MAX} placeholder="Write a reply..." rows={2} className="rounded px-2 py-1.5 text-xs" />
+                      {replyError[t.id] && <p className="text-xs" style={{ color: "var(--clay)" }}>{replyError[t.id]}</p>}
+                      <div className="flex justify-end">
+                        <button type="submit" className="btn-primary rounded-full px-3 py-1 text-xs">Reply</button>
+                      </div>
+                    </form>
                   </div>
                 )}
               </div>
@@ -1551,7 +1593,7 @@ export default function StallDirectory() {
                         </div>
                       )}
                       {reviewSubmitted[reviewKey] ? (
-                        <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Thanks! Submitted for review.</p>
+                        <p className="text-xs" style={{ color: "var(--leaf-dark)" }}>Thanks for the review!</p>
                       ) : reviewFormOpen === reviewKey ? (
                         <form onSubmit={(e) => addReview("tool", t.id, e)} className="flex flex-col gap-1.5 mt-1">
                           <input name="reviewer" required placeholder="Your name" className="rounded px-2 py-1.5 text-xs" />
