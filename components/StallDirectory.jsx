@@ -557,13 +557,15 @@ export default function StallDirectory() {
         existing || (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) }));
       const subJson = subscription.toJSON();
       if (supabase) {
+        // Plain insert rather than upsert — this project's RLS authorizes a
+        // straight INSERT but not the ON CONFLICT DO UPDATE path an upsert
+        // generates, even with an UPDATE policy in place. A duplicate-key
+        // error here just means this browser is already subscribed to this
+        // thread, which isn't a real failure.
         const { error } = await supabase
           .from("push_subscriptions")
-          .upsert(
-            { thread_id: threadId, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth },
-            { onConflict: "thread_id,endpoint" }
-          );
-        if (error) {
+          .insert({ thread_id: threadId, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth });
+        if (error && error.code !== "23505") {
           setSubscribeError((prev) => ({ ...prev, [threadId]: `Couldn't save subscription: ${error.message}` }));
           return;
         }
