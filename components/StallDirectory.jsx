@@ -156,6 +156,8 @@ export default function StallDirectory() {
   const [openThread, setOpenThread] = useState(null);
   const [showNewThread, setShowNewThread] = useState(false);
   const [threadError, setThreadError] = useState("");
+  const [threadPhotoPreview, setThreadPhotoPreview] = useState([]);
+  const [threadPhotoNote, setThreadPhotoNote] = useState("");
   const [replyError, setReplyError] = useState({}); // { [threadId]: message }
   const [subscribedThreads, setSubscribedThreads] = useState(() => new Set()); // thread ids notified on this device
   const [subscribingThread, setSubscribingThread] = useState(null); // thread id currently mid-subscribe
@@ -272,6 +274,7 @@ export default function StallDirectory() {
       setThreads(
         (threadRows || []).map((t) => ({
           id: t.id, category: t.category, title: t.title, postedOn: t.created_at?.slice(0, 10), status: t.status,
+          photos: t.photos || [],
           replies: (replyRows || []).filter((r) => r.thread_id === t.id).map((r) => ({ author: r.author, text: r.text })),
         }))
       );
@@ -483,7 +486,32 @@ export default function StallDirectory() {
   async function addThread(e) {
     e.preventDefault();
     const f = e.target;
-    const draft = { category: f.category.value, title: f.title.value, status: "approved" };
+    const files = f.photos ? Array.from(f.photos.files).slice(0, 4) : [];
+    let photos = [];
+    let failedCount = 0;
+
+    if (supabase && files.length) {
+      const uploads = await Promise.all(
+        files.map(async (file) => {
+          const compressed = await compressImage(file);
+          const path = `threads/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+          let { error } = await supabase.storage.from("listing-photos").upload(path, compressed);
+          if (error) {
+            ({ error } = await supabase.storage.from("listing-photos").upload(path, compressed));
+          }
+          if (error) {
+            failedCount += 1;
+            return null;
+          }
+          return supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl;
+        })
+      );
+      photos = uploads.filter(Boolean);
+    } else if (files.length) {
+      photos = files.map((file) => URL.createObjectURL(file)); // preview-only, doesn't persist without Supabase
+    }
+
+    const draft = { category: f.category.value, title: f.title.value, photos, status: "approved" };
     let newId = Date.now();
     if (supabase) {
       // Needs the real uuid back, not a fake local id — replies reference
@@ -497,7 +525,12 @@ export default function StallDirectory() {
     }
     setThreadError("");
     setThreads([{ ...draft, id: newId, postedOn: new Date().toISOString().slice(0, 10), replies: [] }, ...threads]);
+    setThreadPhotoPreview([]);
     setShowNewThread(false);
+    if (failedCount > 0) {
+      setThreadPhotoNote(`Posted, but ${failedCount} photo${failedCount > 1 ? "s" : ""} didn't upload — check your connection and try again.`);
+      setTimeout(() => setThreadPhotoNote(""), 8000);
+    }
     f.reset();
   }
 
@@ -1370,6 +1403,11 @@ export default function StallDirectory() {
       {/* FORUM */}
       {tab === "forum" && (
         <div className="max-w-4xl mx-auto px-6 py-6">
+          {threadPhotoNote && (
+            <p className="nudge rounded px-3 py-2 text-xs mb-4 flex items-start gap-1.5">
+              <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {threadPhotoNote}
+            </p>
+          )}
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
             <div className="flex gap-2 flex-wrap">
               {FORUM_CATS.map((c) => (
@@ -1393,6 +1431,25 @@ export default function StallDirectory() {
                 {FORUM_CATS.filter((c) => c !== "All").map((c) => <option key={c}>{c}</option>)}
               </select>
               <input name="title" required placeholder="What do you want to ask the market?" className="rounded px-3 py-2 text-sm" />
+              <div>
+                <label className="text-xs block mb-1" style={{ color: "var(--cream-dim)" }}>Photo (optional, up to 4)</label>
+                <input
+                  type="file"
+                  name="photos"
+                  accept="image/*"
+                  multiple
+                  onChange={(e) => setThreadPhotoPreview(Array.from(e.target.files).slice(0, 4).map((f) => URL.createObjectURL(f)))}
+                  className="text-xs w-full rounded px-3 py-2"
+                  style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}
+                />
+                {threadPhotoPreview.length > 0 && (
+                  <div className="flex gap-2 mt-2">
+                    {threadPhotoPreview.map((src, i) => (
+                      <img key={i} src={src} alt="" className="w-14 h-14 object-cover rounded" style={{ border: "1px solid var(--line)" }} />
+                    ))}
+                  </div>
+                )}
+              </div>
               <p className="nudge rounded px-2 py-1.5 text-[11px] flex items-start gap-1.5">
                 <AlertTriangle size={12} className="shrink-0 mt-0.5" />
                 Please don't post phone numbers or contact details here — replies will help connect you directly.
@@ -1424,6 +1481,20 @@ export default function StallDirectory() {
                 </button>
                 {openThread === t.id && (
                   <div className="mt-3 pt-3 flex flex-col gap-2" style={{ borderTop: "1px solid var(--line)" }}>
+                    {t.photos && t.photos.length > 0 && (
+                      <div className="flex gap-2 flex-wrap mb-1">
+                        {t.photos.map((src, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => openLightbox(t.photos, i, t.title)}
+                            style={{ padding: 0, border: "none", background: "none", cursor: "pointer" }}
+                          >
+                            <img src={src} alt="" className="w-16 h-16 object-cover rounded" style={{ border: "1px solid var(--line)" }} />
+                          </button>
+                        ))}
+                      </div>
+                    )}
                     {t.replies.length === 0 && <p className="text-xs" style={{ color: "var(--cream-dim)" }}>No replies yet — be the first to answer.</p>}
                     {t.replies.map((r, i) => (
                       <div key={i} className="text-sm">

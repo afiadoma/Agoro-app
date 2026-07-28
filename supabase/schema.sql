@@ -15,6 +15,10 @@
 -- notifications for thread replies), see
 -- migrations/push_notifications.sql for the migration to run instead of
 -- the full script.
+--
+-- If your project predates `photos` on threads, see
+-- migrations/thread_photos.sql for the migration to run instead of the
+-- full script.
 
 create table listings (
   id uuid primary key default gen_random_uuid(),
@@ -50,6 +54,7 @@ create table threads (
   id uuid primary key default gen_random_uuid(),
   category text not null,
   title text not null,
+  photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   created_at timestamptz default now()
 );
