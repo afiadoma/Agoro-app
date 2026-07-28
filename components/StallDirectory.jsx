@@ -435,16 +435,20 @@ export default function StallDirectory() {
         edit_pin: f.pin.value.trim(),
         faq: f.faq.value.trim() || null,
       };
+      let newId = Date.now();
       if (supabase) {
         // .select() forces Supabase to report RLS/schema failures as a real
-        // error instead of returning 201 success while writing zero rows.
-        const { error: insertError } = await supabase.from("listings").insert(draft).select();
+        // error instead of returning 201 success while writing zero rows —
+        // and gives us back the real uuid, needed since reviews reference
+        // this id as a foreign key (a fake local id would break "leave a
+        // review" on a listing submitted this same session).
+        const { data: insertData, error: insertError } = await supabase.from("listings").insert(draft).select();
         if (insertError) {
           setListingPhotoNote(`Your listing wasn't saved: ${insertError.message}`);
           return;
         }
+        if (insertData && insertData[0]) newId = insertData[0].id;
       }
-      const newId = Date.now();
       setListings([{ ...draft, id: newId, listedOn: new Date().toISOString().slice(0, 10) }, ...listings]);
       setMyListingIds((prev) => new Set(prev).add(newId));
       setShowAdd(false);
@@ -466,15 +470,19 @@ export default function StallDirectory() {
     e.preventDefault();
     const f = e.target;
     const draft = { category: f.category.value, title: f.title.value, status: "approved" };
+    let newId = Date.now();
     if (supabase) {
-      const { error } = await supabase.from("threads").insert(draft).select();
+      // Needs the real uuid back, not a fake local id — replies reference
+      // this thread's id as a foreign key.
+      const { data, error } = await supabase.from("threads").insert(draft).select();
       if (error) {
         setThreadError(`Couldn't post: ${error.message}`);
         return;
       }
+      if (data && data[0]) newId = data[0].id;
     }
     setThreadError("");
-    setThreads([{ ...draft, id: Date.now(), postedOn: new Date().toISOString().slice(0, 10), replies: [] }, ...threads]);
+    setThreads([{ ...draft, id: newId, postedOn: new Date().toISOString().slice(0, 10), replies: [] }, ...threads]);
     setShowNewThread(false);
     f.reset();
   }
@@ -554,14 +562,15 @@ export default function StallDirectory() {
         edit_pin: f.pin.value.trim(),
         faq: f.faq.value.trim() || null,
       };
+      let newId = Date.now();
       if (supabase) {
-        const { error: insertError } = await supabase.from("tools").insert(draft).select();
+        const { data: insertData, error: insertError } = await supabase.from("tools").insert(draft).select();
         if (insertError) {
           setToolPhotoNote(`Your listing wasn't saved: ${insertError.message}`);
           return;
         }
+        if (insertData && insertData[0]) newId = insertData[0].id;
       }
-      const newId = Date.now();
       setTools([{ ...draft, id: newId, postedOn: new Date().toISOString().slice(0, 10) }, ...tools]);
       setMyToolIds((prev) => new Set(prev).add(newId));
       setShowAddTool(false);
