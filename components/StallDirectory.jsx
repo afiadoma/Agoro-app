@@ -159,6 +159,7 @@ export default function StallDirectory() {
   const [threadPhotoPreview, setThreadPhotoPreview] = useState([]);
   const [threadPhotoNote, setThreadPhotoNote] = useState("");
   const [replyError, setReplyError] = useState({}); // { [threadId]: message }
+  const [replyPhotoPreview, setReplyPhotoPreview] = useState({}); // { [threadId]: [previewUrls] }
   const [subscribedThreads, setSubscribedThreads] = useState(() => new Set()); // thread ids notified on this device
   const [subscribingThread, setSubscribingThread] = useState(null); // thread id currently mid-subscribe
   const [subscribeError, setSubscribeError] = useState({}); // { [threadId]: message }
@@ -275,7 +276,7 @@ export default function StallDirectory() {
         (threadRows || []).map((t) => ({
           id: t.id, category: t.category, title: t.title, postedOn: t.created_at?.slice(0, 10), status: t.status,
           photos: t.photos || [],
-          replies: (replyRows || []).filter((r) => r.thread_id === t.id).map((r) => ({ author: r.author, text: r.text })),
+          replies: (replyRows || []).filter((r) => r.thread_id === t.id).map((r) => ({ author: r.author, text: r.text, photos: r.photos || [] })),
         }))
       );
       setTools(
@@ -537,7 +538,32 @@ export default function StallDirectory() {
   async function addReply(threadId, e) {
     e.preventDefault();
     const f = e.target;
-    const draft = { thread_id: threadId, author: f.author.value, text: f.text.value, status: "approved" };
+    const files = f.photos ? Array.from(f.photos.files).slice(0, 4) : [];
+    let photos = [];
+    let failedCount = 0;
+
+    if (supabase && files.length) {
+      const uploads = await Promise.all(
+        files.map(async (file) => {
+          const compressed = await compressImage(file);
+          const path = `replies/${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`;
+          let { error } = await supabase.storage.from("listing-photos").upload(path, compressed);
+          if (error) {
+            ({ error } = await supabase.storage.from("listing-photos").upload(path, compressed));
+          }
+          if (error) {
+            failedCount += 1;
+            return null;
+          }
+          return supabase.storage.from("listing-photos").getPublicUrl(path).data.publicUrl;
+        })
+      );
+      photos = uploads.filter(Boolean);
+    } else if (files.length) {
+      photos = files.map((file) => URL.createObjectURL(file)); // preview-only, doesn't persist without Supabase
+    }
+
+    const draft = { thread_id: threadId, author: f.author.value, text: f.text.value, photos, status: "approved" };
     if (supabase) {
       const { error } = await supabase.from("replies").insert(draft).select();
       if (error) {
@@ -545,10 +571,14 @@ export default function StallDirectory() {
         return;
       }
     }
-    setReplyError((prev) => ({ ...prev, [threadId]: "" }));
+    setReplyError((prev) => ({
+      ...prev,
+      [threadId]: failedCount > 0 ? `Posted, but ${failedCount} photo${failedCount > 1 ? "s" : ""} didn't upload.` : "",
+    }));
     setThreads((prev) =>
-      prev.map((t) => (t.id === threadId ? { ...t, replies: [...t.replies, { author: draft.author, text: draft.text }] } : t))
+      prev.map((t) => (t.id === threadId ? { ...t, replies: [...t.replies, { author: draft.author, text: draft.text, photos: draft.photos }] } : t))
     );
+    setReplyPhotoPreview((prev) => ({ ...prev, [threadId]: [] }));
     f.reset();
 
     if (supabase) {
@@ -1500,11 +1530,43 @@ export default function StallDirectory() {
                       <div key={i} className="text-sm">
                         <span className="mono text-xs" style={{ color: "var(--gold)" }}>{r.author}: </span>
                         <span style={{ color: "var(--cream-dim)" }}>{r.text}</span>
+                        {r.photos && r.photos.length > 0 && (
+                          <div className="flex gap-2 flex-wrap mt-1">
+                            {r.photos.map((src, pi) => (
+                              <button
+                                key={pi}
+                                type="button"
+                                onClick={() => openLightbox(r.photos, pi, r.author)}
+                                style={{ padding: 0, border: "none", background: "none", cursor: "pointer" }}
+                              >
+                                <img src={src} alt="" className="w-14 h-14 object-cover rounded" style={{ border: "1px solid var(--line)" }} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                     <form onSubmit={(e) => addReply(t.id, e)} className="flex flex-col gap-1.5 mt-1">
                       <input name="author" required placeholder="Your name" className="rounded px-2 py-1.5 text-xs" />
                       <textarea name="text" required maxLength={BLURB_MAX} placeholder="Write a reply..." rows={2} className="rounded px-2 py-1.5 text-xs" />
+                      <input
+                        type="file"
+                        name="photos"
+                        accept="image/*"
+                        multiple
+                        onChange={(e) =>
+                          setReplyPhotoPreview((prev) => ({ ...prev, [t.id]: Array.from(e.target.files).slice(0, 4).map((f) => URL.createObjectURL(f)) }))
+                        }
+                        className="text-xs w-full rounded px-2 py-1.5"
+                        style={{ background: "#FFFFFF", border: "1px solid var(--line)", color: "var(--cream)" }}
+                      />
+                      {replyPhotoPreview[t.id] && replyPhotoPreview[t.id].length > 0 && (
+                        <div className="flex gap-2 mt-1">
+                          {replyPhotoPreview[t.id].map((src, pi) => (
+                            <img key={pi} src={src} alt="" className="w-12 h-12 object-cover rounded" style={{ border: "1px solid var(--line)" }} />
+                          ))}
+                        </div>
+                      )}
                       {replyError[t.id] && <p className="text-xs" style={{ color: "var(--clay)" }}>{replyError[t.id]}</p>}
                       <div className="flex items-center justify-between gap-2 flex-wrap">
                         {subscribedThreads.has(t.id) ? (

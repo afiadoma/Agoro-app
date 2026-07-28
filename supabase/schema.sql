@@ -19,6 +19,10 @@
 -- If your project predates `photos` on threads, see
 -- migrations/thread_photos.sql for the migration to run instead of the
 -- full script.
+--
+-- If your project predates `photos` on replies, see
+-- migrations/reply_photos.sql for the migration to run instead of the
+-- full script.
 
 create table listings (
   id uuid primary key default gen_random_uuid(),
@@ -64,6 +68,7 @@ create table replies (
   thread_id uuid references threads(id) on delete cascade,
   author text not null,
   text text not null,
+  photos text[] default '{}',
   status text not null default 'pending' check (status in ('pending','approved','rejected')),
   created_at timestamptz default now()
 );
