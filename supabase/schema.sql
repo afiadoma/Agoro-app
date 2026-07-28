@@ -10,6 +10,11 @@
 -- If your project predates `faq` / `contact_click_count` / the `reviews`
 -- table, see migrations/reviews_faq_analytics.sql for the migration to run
 -- instead of the full script.
+--
+-- If your project predates the `push_subscriptions` table (browser push
+-- notifications for thread replies), see
+-- migrations/push_notifications.sql for the migration to run instead of
+-- the full script.
 
 create table listings (
   id uuid primary key default gen_random_uuid(),
@@ -102,6 +107,20 @@ create table reviews (
   created_at timestamptz default now()
 );
 
+-- Browser push subscriptions for "notify me about replies" on a thread.
+-- Deliberately no public read policy — the endpoint/keys let anyone push a
+-- notification to that subscriber, so only the server (via the service
+-- role key in the /api/notify-reply route) reads this table.
+create table push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  thread_id uuid references threads(id) on delete cascade,
+  endpoint text not null,
+  p256dh text not null,
+  auth text not null,
+  created_at timestamptz default now(),
+  unique (thread_id, endpoint)
+);
+
 -- Row Level Security: open read/write for now since sign-up is limited to
 -- your existing group and you're manually reviewing reports. Tighten this
 -- (e.g. require auth) before opening the app beyond the trusted group.
@@ -112,6 +131,7 @@ alter table tools enable row level security;
 alter table prices enable row level security;
 alter table reports enable row level security;
 alter table reviews enable row level security;
+alter table push_subscriptions enable row level security;
 
 -- Read policies are open (not just approved) so the "manage my listing" flow can
 -- look up a person's own pending/rejected rows by WhatsApp number. The app itself
@@ -147,6 +167,12 @@ create policy "public insert reviews" on reviews for insert with check (true);
 grant select, insert on reviews to anon, authenticated;
 grant update (contact_click_count) on listings to anon, authenticated;
 grant update (contact_click_count) on tools to anon, authenticated;
+
+-- Insert/update (for the upsert-on-resubscribe path) but no select grant for
+-- anon on purpose — see the comment on the table definition above.
+create policy "public insert push subscriptions" on push_subscriptions for insert with check (true);
+create policy "public update push subscriptions" on push_subscriptions for update using (true) with check (true);
+grant insert, update on push_subscriptions to anon, authenticated;
 
 -- Atomic click-counter increment, callable without needing a broad update
 -- grant on the whole row — security definer bypasses RLS for just this one

@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef } from "react";
-import { Search, MapPin, MessageCircle, Plus, X, ArrowUpRight, Wheat, ShieldCheck, Flag, AlertTriangle, Wrench, Tag, TrendingUp, Share2, Star, Heart, HelpCircle } from "lucide-react";
+import { Search, MapPin, MessageCircle, Plus, X, ArrowUpRight, Wheat, ShieldCheck, Flag, AlertTriangle, Wrench, Tag, TrendingUp, Share2, Star, Heart, HelpCircle, Bell, BellRing } from "lucide-react";
 import { supabase } from "../lib/supabaseClient";
 
 const TOKENS = `
@@ -89,6 +89,15 @@ function renderStars(rating) {
   return "★".repeat(rounded) + "☆".repeat(5 - rounded);
 }
 
+// PushManager wants the VAPID public key as a Uint8Array, not the base64url
+// string it's normally shared as.
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
 const BLURB_MAX = 220;
 
 function waLink(number, itemName) {
@@ -148,6 +157,9 @@ export default function StallDirectory() {
   const [showNewThread, setShowNewThread] = useState(false);
   const [threadError, setThreadError] = useState("");
   const [replyError, setReplyError] = useState({}); // { [threadId]: message }
+  const [subscribedThreads, setSubscribedThreads] = useState(() => new Set()); // thread ids notified on this device
+  const [subscribingThread, setSubscribingThread] = useState(null); // thread id currently mid-subscribe
+  const [subscribeError, setSubscribeError] = useState({}); // { [threadId]: message }
 
   const [toolFilter, setToolFilter] = useState("All");
   const [toolQuery, setToolQuery] = useState("");
@@ -232,6 +244,8 @@ export default function StallDirectory() {
     try {
       const raw = localStorage.getItem("agoro_favorites");
       if (raw) setFavorites(new Set(JSON.parse(raw)));
+      const rawSubs = localStorage.getItem("agoro_subscribed_threads");
+      if (rawSubs) setSubscribedThreads(new Set(JSON.parse(rawSubs)));
     } catch {
       // localStorage unavailable (private browsing, etc.) — favorites just won't persist
     }
@@ -503,6 +517,71 @@ export default function StallDirectory() {
       prev.map((t) => (t.id === threadId ? { ...t, replies: [...t.replies, { author: draft.author, text: draft.text }] } : t))
     );
     f.reset();
+
+    if (supabase) {
+      const thread = threads.find((t) => t.id === threadId);
+      fetch("/api/notify-reply", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          threadId,
+          threadTitle: thread ? thread.title : "",
+          replyAuthor: draft.author,
+          replyText: draft.text,
+        }),
+      }).catch(() => {}); // best-effort — a failed push shouldn't block the reply from posting
+    }
+  }
+
+  async function subscribeToThread(threadId) {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setSubscribeError((prev) => ({ ...prev, [threadId]: "Notifications aren't supported in this browser." }));
+      return;
+    }
+    const vapidPublicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!vapidPublicKey) {
+      setSubscribeError((prev) => ({ ...prev, [threadId]: "Notifications aren't set up yet." }));
+      return;
+    }
+    setSubscribeError((prev) => ({ ...prev, [threadId]: "" }));
+    setSubscribingThread(threadId);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        setSubscribeError((prev) => ({ ...prev, [threadId]: "Notifications were blocked — enable them in your browser settings to turn this on." }));
+        return;
+      }
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+      const subscription =
+        existing || (await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(vapidPublicKey) }));
+      const subJson = subscription.toJSON();
+      if (supabase) {
+        const { error } = await supabase
+          .from("push_subscriptions")
+          .upsert(
+            { thread_id: threadId, endpoint: subJson.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth },
+            { onConflict: "thread_id,endpoint" }
+          );
+        if (error) {
+          setSubscribeError((prev) => ({ ...prev, [threadId]: `Couldn't save subscription: ${error.message}` }));
+          return;
+        }
+      }
+      setSubscribedThreads((prev) => {
+        const next = new Set(prev).add(threadId);
+        try {
+          localStorage.setItem("agoro_subscribed_threads", JSON.stringify([...next]));
+        } catch {
+          // localStorage unavailable — subscription still works for this session
+        }
+        return next;
+      });
+    } catch (err) {
+      setSubscribeError((prev) => ({ ...prev, [threadId]: "Something went wrong turning on notifications." }));
+    } finally {
+      setSubscribingThread(null);
+    }
   }
 
   async function reportListing(id) {
@@ -1354,9 +1433,25 @@ export default function StallDirectory() {
                       <input name="author" required placeholder="Your name" className="rounded px-2 py-1.5 text-xs" />
                       <textarea name="text" required maxLength={BLURB_MAX} placeholder="Write a reply..." rows={2} className="rounded px-2 py-1.5 text-xs" />
                       {replyError[t.id] && <p className="text-xs" style={{ color: "var(--clay)" }}>{replyError[t.id]}</p>}
-                      <div className="flex justify-end">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        {subscribedThreads.has(t.id) ? (
+                          <span className="mono text-xs flex items-center gap-1" style={{ color: "var(--leaf-dark)" }}>
+                            <BellRing size={12} /> You'll be notified of replies
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => subscribeToThread(t.id)}
+                            disabled={subscribingThread === t.id}
+                            className="mono text-xs px-3 py-1 rounded-full pill flex items-center gap-1"
+                            style={subscribingThread === t.id ? { opacity: 0.6, cursor: "wait" } : {}}
+                          >
+                            <Bell size={12} /> {subscribingThread === t.id ? "Turning on…" : "Notify me about replies"}
+                          </button>
+                        )}
                         <button type="submit" className="btn-primary rounded-full px-3 py-1 text-xs">Reply</button>
                       </div>
+                      {subscribeError[t.id] && <p className="text-xs" style={{ color: "var(--clay)" }}>{subscribeError[t.id]}</p>}
                     </form>
                   </div>
                 )}
